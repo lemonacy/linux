@@ -13,9 +13,9 @@
  * the page directory. [According to comments etc elsewhere on a compressed
  * kernel it will end up at 0x1000 + 1Mb I hope so as I assume this. - AC]
  *
- * Page 0 is deliberately kept safe, since System Management Mode code in 
+ * Page 0 is deliberately kept safe, since System Management Mode code in
  * laptops may need to access the BIOS data stored there.  This is also
- * useful for future device drivers that either access the BIOS via VM86 
+ * useful for future device drivers that either access the BIOS via VM86
  * mode.
  */
 
@@ -71,6 +71,7 @@
 #define rva(X) ((X) - startup_32)
 
 	.code32
+    // 默认加载到物理内存1M处
 SYM_FUNC_START(startup_32)
 	/*
 	 * 32bit entry is 0 and it is ABI so immutable!
@@ -89,12 +90,14 @@ SYM_FUNC_START(startup_32)
  * data at 0x1e4 (defined as a scratch field) are used as the stack
  * for this calculation. Only 4 bytes are needed.
  */
+    // BP_scratch 一个临时的4字节堆栈，用来获取当前代码执行的线性地址（cs,ds段都从0开始）
 	leal	(BP_scratch+4)(%esi), %esp
 	call	1f
 1:	popl	%ebp
 	subl	$ rva(1b), %ebp
 
 	/* Load new GDT with the 64bit segments using 32bit descriptor */
+    // gdt内存块就定义在本文件的下面，2(%eax)是把gdt的地址赋值给gdt 6个字节的后面4个字节，以便lgdt加载6个字节的内容
 	leal	rva(gdt)(%ebp), %eax
 	movl	%eax, 2(%eax)
 	lgdt	(%eax)
