@@ -292,7 +292,7 @@ boot_flag:	.word 0xAA55
 	# offset 512, entry point
 
 	.globl	_start
-_start:
+_start: # debug地址为0x10200
 		# Explicitly enter this as bytes, or the assembler
 		# tries to generate a 3-byte jump here, which causes
 		# everything else to push off to the wrong offset.
@@ -617,17 +617,17 @@ start_of_setup:
 # We will have entered with %cs = %ds+0x20, normalize %cs so
 # it is on par with the other segments.
 	pushw	%ds
-	pushw	$6f
+	pushw	$6f # debug地址为0x66cb02a3
 	lretw
 6:
 
 # Check signature at end of setup
 	cmpl	$0x5a5aaa55, setup_sig
-	jne	setup_bad
+	jne	setup_bad   # debug地址为0x102c5
 
 # Zero the bss
-	movw	$__bss_start, %di
-	movw	$_end+3, %cx
+	movw	$__bss_start, %di   # debug: __bss_start为0x13b936e0
+	movw	$_end+3, %cx        # debug: __end+3为0x31664a13
 	xorl	%eax, %eax
 	subw	%di, %cx
 	shrw	$2, %cx
