@@ -102,7 +102,7 @@ modules.order
 /include/generated/
 /include/ksym/
 /arch/*/include/generated/
-
+!.config
 # stgit generated dirs
 patches-*
 

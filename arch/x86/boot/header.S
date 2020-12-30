@@ -622,7 +622,7 @@ start_of_setup:
 6:
 
 # Check signature at end of setup
-	cmpl	$0x5a5aaa55, setup_sig
+	cmpl	$0x5a5aaa55, setup_sig  # setup.bin文件的最后4个字节
 	jne	setup_bad   # debug地址为0x102c5
 
 # Zero the bss

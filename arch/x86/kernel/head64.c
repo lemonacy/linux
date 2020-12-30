@@ -176,7 +176,7 @@ unsigned long __head __startup_64(unsigned long physaddr,
 	if (la57)
 		*p = (unsigned long)level4_kernel_pgt;
 	else
-		*p = (unsigned long)level3_kernel_pgt;
+		*p = (unsigned long)level3_kernel_pgt;  /* 给early_top_pgt[511]赋值 */
 	*p += _PAGE_TABLE_NOENC - __START_KERNEL_map + load_delta;
 
 	if (la57) {
@@ -412,7 +412,7 @@ void __init do_early_exception(struct pt_regs *regs, int trapnr)
 	early_fixup_exception(regs, trapnr);
 }
 
-/* Don't add a printk in there. printk relies on the PDA which is not initialized 
+/* Don't add a printk in there. printk relies on the PDA which is not initialized
    yet. */
 static void __init clear_bss(void)
 {

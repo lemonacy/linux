@@ -119,6 +119,6 @@ void go_to_protected_mode(void)
 	/* Actual transition to protected mode... */
 	setup_idt();
 	setup_gdt();
-	protected_mode_jump(boot_params.hdr.code32_start,
+	protected_mode_jump(boot_params.hdr.code32_start,   /* debug: 默认为1M，但bootloader可以在加载内核的时候修改，qemu默认不会修改。 */
 			    (u32)&boot_params + (ds() << 4));
 }

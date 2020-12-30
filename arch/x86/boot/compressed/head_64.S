@@ -94,7 +94,7 @@ SYM_FUNC_START(startup_32)
 	leal	(BP_scratch+4)(%esi), %esp
 	call	1f
 1:	popl	%ebp    /* debug: 此处获取到的值为0x10000d */
-	subl	$ rva(1b), %ebp     /* debug: 此处ebp的值为0x100000 */
+	subl	$ rva(1b), %ebp     /* debug: 此处ebp的值为0x100000，为什么需要计算startup_32实际加载地址的偏移？因为下面要使用代码的绝对地址，好比设置在源码中定义的boot_stack(leal rva(boot_stack_end)(%ebp), %esp) */
 
 	/* Load new GDT with the 64bit segments using 32bit descriptor */
     /*
@@ -233,7 +233,7 @@ SYM_FUNC_START(startup_32)
 	movl	$2048, %ecx
 1:	movl	%eax, 0(%edi)
 	addl	%edx, 4(%edi)
-	addl	$0x00200000, %eax
+	addl	$0x00200000, %eax   /* 建立2048个2M页表项，最终我们拥有了一个4G表，映射了4G大小的内存。 */
 	addl	$8, %edi
 	decl	%ecx
 	jnz	1b
@@ -476,8 +476,8 @@ SYM_CODE_START(startup_64)  /* debug: 物理内存地址为0x100200 */
 	/* Switch to compatibility mode (CS.L = 0 CS.D = 1) via far return */
 	pushq	$__KERNEL32_CS  /* debug: __KERNEL32_CS=0x8 */
 	leaq	TRAMPOLINE_32BIT_CODE_OFFSET(%rax), %rax
-	pushq	%rax
-	lretq
+	pushq	%rax    /* debug: rax=0x9e000 */
+	lretq   /* debug: 物理地址0x100294 */
 trampoline_return:
 	/* Restore the stack, the 32-bit trampoline uses its own stack */
 	leaq	rva(boot_stack_end)(%rbx), %rsp /* debug: 物理地址0x100296，rva(boot_stack_end)=0x84edc0, rsp=0x3022dc0 */
@@ -527,8 +527,8 @@ trampoline_return:
 /*
  * Jump to the relocated address.
  */
-	leaq	rva(.Lrelocated)(%rbx), %rax    /* debug: rva(.Lrelocated)=0x82d1b0, rax=0x30011b0 */
-	jmp	*%rax   /* debug: 物理地址0x1002e7, rax=0x30011b0 */
+	leaq	rva(.Lrelocated)(%rbx), %rax    /* debug: rva(.Lrelocated)=0x82d670, rax=0x3001670 */
+	jmp	*%rax   /* debug: 物理地址0x1002e7, rax=0x3001670 */
 SYM_CODE_END(startup_64)
 
 #ifdef CONFIG_EFI_STUB
@@ -552,8 +552,8 @@ SYM_FUNC_START_LOCAL_NOALIGN(.Lrelocated)
  * Clear BSS (stack is currently empty)
  */
 	xorl	%eax, %eax  /* debug: 物理地址0x30011b0。为什么这块的地址一下跳到了48+M处，因为从vmlinux.lds.S中可看到，.text的section是放到了压缩内核(.rodata..compressed)的后面，所以此处的.text代码差不多位于内核文件的最末端了。 */
-	leaq    _bss(%rip), %rdi    /* debug: _bss=0xdc07, bss段和.text段挨得比较近（都在8+M压缩内核的末端）。rdi=0x300edc0 */
-	leaq    _ebss(%rip), %rcx   /* debug: _ebss=0x25c70, 大于有1+M的bss空间。 rcx=0x3026e30 */
+	leaq    _bss(%rip), %rdi    /* debug: _bss=0xdc07, rip=0x3001672, bss段和.text段挨得比较近（都在8+M压缩内核的末端）。rdi=0x300edc0 */
+	leaq    _ebss(%rip), %rcx   /* debug: _ebss=0x25c70, rip=0x3001679, 大于有1+M的bss空间。 rcx=0x3026e30 */
 	subq	%rdi, %rcx
 	shrq	$3, %rcx
 	rep	stosq
@@ -592,7 +592,7 @@ SYM_FUNC_START_LOCAL_NOALIGN(.Lrelocated)
 /*
  * Jump to the decompressed kernel.
  */
-	jmp	*%rax   /* debug: 物理地址0x3001207，(如果启动命令行参数带nokaslr则rax=0x1000000(16M)，否则随地移动的地址就固定了，好比在一次调试中rax=0x3400000[52M])，下面就跳转到arch/x86/kernel/head_64.S去执行了。 */
+	jmp	*%rax   /* debug: 物理地址0x30016c7，rax=0x1000000 (如果启动命令行参数带nokaslr则rax=0x1000000(16M)，否则随地移动的地址就固定了，好比在一次调试中rax=0x3400000[52M])，下面就跳转到arch/x86/kernel/head_64.S去执行了。 */
 SYM_FUNC_END(.Lrelocated)
 
 	.code32
