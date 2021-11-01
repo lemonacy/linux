@@ -118,11 +118,11 @@ SYM_FUNC_START(startup_32)
 	movl	%eax, %ss
 
 /* setup a stack and make sure cpu supports long mode. */
-    /* 因为下面要进行函数调用，所以必须先设置好stack。 */
+    /* 因为下面要进行函数调用，所以必须先设置好stack。boot_stack_end就定义在本文件的下面，编译时即分配好了。 */
 	leal	rva(boot_stack_end)(%ebp), %esp
 
 	call	verify_cpu
-	testl	%eax, %eax
+	testl	%eax, %eax	/* verify_cpu的结果通过eax返回，如果不为0则说明不支持longmode，直接挂起CPU */
 	jnz	.Lno_longmode
 
 /*
@@ -212,26 +212,26 @@ SYM_FUNC_START(startup_32)
 
 	/* Build Level 4 */
 	leal	rva(pgtable + 0)(%ebx), %edi
-	leal	0x1007 (%edi), %eax
-	movl	%eax, 0(%edi)
+	leal	0x1007 (%edi), %eax	/* 此处edi偏移0x1007，其中0x1000是PML4自身的大小4k，因为PML4位于pgtable的第一个4k，PML3位于pgtable的第二个4k，PML4中存的PML3页表的地址，所以这里要加0x1000。0x7是页表的falgs，表示PRESENT+RW+USER。 */
+	movl	%eax, 0(%edi)	/* 由于目前初始化的4G地址空间的early page table，所以页表项中的低32位就可以表达，下面将edx赋给高4位暂时还不清楚SEV的高级用法。 */
 	addl	%edx, 4(%edi)
 
 	/* Build Level 3 */
 	leal	rva(pgtable + 0x1000)(%ebx), %edi
 	leal	0x1007(%edi), %eax
-	movl	$4, %ecx
+	movl	$4, %ecx	/* PML3页表也占4k大小，但只填充4项PML2的配置 */
 1:	movl	%eax, 0x00(%edi)
-	addl	%edx, 0x04(%edi)
-	addl	$0x00001000, %eax
+	addl	%edx, 0x04(%edi)	/* SEV的高级用法，暂时不清楚作用 */
+	addl	$0x00001000, %eax	/* 每个PML2页表也占4k，填完一个要加0x1000(4k)才是下一个PML2页表的地址 */
 	addl	$8, %edi
 	decl	%ecx
 	jnz	1b
 
 	/* Build Level 2 */
-	leal	rva(pgtable + 0x2000)(%ebx), %edi
-	movl	$0x00000183, %eax
-	movl	$2048, %ecx
-1:	movl	%eax, 0(%edi)
+	leal	rva(pgtable + 0x2000)(%ebx), %edi	/* 4个PML2页表位于pgtable的第3个4k处 */
+	movl	$0x00000183, %eax	/* 0x183 flags: PRESENT + WRITE + MBZ，3 - present和write，8 - 页大小是4k还是2M（此处为1，表示2M）；1 - G位(Global)表示全局页，该页将在高速缓冲器TLB中一直保存 */
+	movl	$2048, %ecx	/* 2048个PML1页表项，每个描述2M的段，一共2048 * 2M = 4G */
+1:	movl	%eax, 0(%edi)	/* PML1页表项从地址0开始映射，所以eax的地址从$0x0000000开始，每次递增0x00200000 */
 	addl	%edx, 4(%edi)
 	addl	$0x00200000, %eax   /* 建立2048个2M页表项，最终我们拥有了一个4G表，映射了4G大小的内存。 */
 	addl	$8, %edi
@@ -240,7 +240,7 @@ SYM_FUNC_START(startup_32)
 
 	/* Enable the boot page tables */
 	leal	rva(pgtable)(%ebx), %eax
-	movl	%eax, %cr3  /* cr3中存的即为页表的地址，debug: 物理地址为0x1000ee */
+	movl	%eax, %cr3  /* cr3中存的即为页表的地址，debug: 物理地址为0x1000ee。此处1M多一点点的early page table应该只会在内核解压之前使用，具体什么时候CR3指向新的页表，继续往后面看。 */
 
 	/* Enable Long mode in EFER (Extended Feature Enable Register) */
 	movl	$MSR_EFER, %ecx /* debug: MSR_EFER值为$0xc0000080 */
@@ -288,7 +288,7 @@ SYM_FUNC_START(startup_32)
 1:
 #endif
 	pushl	$__KERNEL_CS    /* debug: __KERNEL_CS为0x10 */
-	pushl	%eax
+	pushl	%eax	/* eax=startup_64，在栈中压入CS和IP，为下面的lret进入64位长模式做最后的准备。 */
 
 	/* Enter paged protected Mode, activating Long Mode */
 	movl	$(X86_CR0_PG | X86_CR0_PE), %eax /* Enable Paging and Protected mode */
@@ -393,16 +393,16 @@ SYM_CODE_START(startup_64)  /* debug: 物理内存地址为0x100200 */
 	cmpq	$LOAD_PHYSICAL_ADDR, %rbp
 	jae	1f
 #endif
-	movq	$LOAD_PHYSICAL_ADDR, %rbp
+	movq	$LOAD_PHYSICAL_ADDR, %rbp	/* 由于内核有可能由64bit bootloader加载，所以这里再次计算内核要解压到的位置-16M */
 1:
 
 	/* Target address to relocate to for decompression */
 	movl	BP_init_size(%rsi), %ebx
 	subl	$ rva(_end), %ebx
-	addq	%rbp, %rbx
+	addq	%rbp, %rbx	/* 计算要将压缩内核移动到的位置(39+M) */
 
 	/* Set up the stack */
-	leaq	rva(boot_stack_end)(%rbx), %rsp /* debug: rbp=0x1000000, rbx=0x27d4000, rsp=0x3022dc0 */
+	leaq	rva(boot_stack_end)(%rbx), %rsp /* debug: rbp=0x1000000, rbx=0x27d4000, rsp=0x3022dc0, boot_stack_end位于压缩内核的尾部(48M多的位置) */
 
 	/*
 	 * At this point we are in long mode with 4-level paging enabled,
@@ -430,8 +430,8 @@ SYM_CODE_START(startup_64)  /* debug: 物理内存地址为0x100200 */
 	 */
 
 	/* Make sure we have GDT with 32-bit code segment */
-	leaq	gdt64(%rip), %rax
-	addq	%rax, 2(%rax)
+	leaq	gdt64(%rip), %rax	/* 在长模式下，可以通过rip+偏移取到数据变量的地址，很方便 */
+	addq	%rax, 2(%rax)	/* gdt64的首2个自己存放的是limit，编译的时候已经计算好。2(%rax)是存储4个字节的gdt地址 */
 	lgdt	(%rax)
 
 	/* Reload CS so IRET returns to a CS actually in the GDT */
