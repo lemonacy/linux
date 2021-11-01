@@ -111,7 +111,7 @@ void __putstr(const char *s)
 	int x, y, pos;
 	char c;
 
-	if (early_serial_base) {
+	if (early_serial_base) {	/* early_serial_base在early_serial_console.c的early_serial_init()中赋值，所以必须要定义earlyprintk=ttyS0后才能查看到debug_putstr()打印的日志。 */
 		const char *str = s;
 		while (*str) {
 			if (*str == '\n')

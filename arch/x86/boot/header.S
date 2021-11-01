@@ -29,7 +29,7 @@ BOOTSEG		= 0x07C0		/* original address of boot-sector */
 SYSSEG		= 0x1000		/* historical load address >> 4 */
 
 #ifndef SVGA_MODE
-#define SVGA_MODE ASK_VGA
+#define SVGA_MODE ASK_VGA   /* ASK_VGA定义在arch/x86/include/uapi/asm/boot.h中，值为0xfffd */
 #endif
 
 #ifndef ROOT_RDONLY
@@ -61,19 +61,19 @@ start2:
 	movw	$bugger_off_msg, %si
 
 msg_loop:
-	lodsb
-	andb	%al, %al
+	lodsb   /* 从si指向的地址读取一个字节，存入al */
+	andb	%al, %al    /* 如果al为NULL，则停止 */
 	jz	bs_die
-	movb	$0xe, %ah
+	movb	$0xe, %ah   /* 将int 0x10的显示字符功能号0xe放入ah，表示要打印字符，al存放字符，bl设置前景色 */
 	movw	$7, %bx
 	int	$0x10
-	jmp	msg_loop
+	jmp	msg_loop    /* 循环打印，直至字符串结束NULL */
 
 bs_die:
 	# Allow the user to press a key, then reboot
 	xorw	%ax, %ax
-	int	$0x16
-	int	$0x19
+	int	$0x16   /* 功能号0(ah=0)从键盘缓冲器读取一个按键输入，读取后ah存扫描码，al存ascii码 */
+	int	$0x19   /* 重启系统：int 0x19会将MBR的512字节装载到内存0x7c00中，然后JUMP到0x7c00处，开始执行MBR的可执行程序（master booter） */
 
 	# int 0x19 should never return.  In case it does anyway,
 	# invoke the BIOS reset code...
@@ -281,11 +281,11 @@ sentinel:	.byte 0xff, 0xff        /* Used to detect broken loaders */
 
 	.globl	hdr
 hdr:
-setup_sects:	.byte 0			/* Filled in by build.c */
+setup_sects:	.byte 0			/* Filled in by build.c, arch/x86/boot文件夹下代码编译的大小（setup部分），在5.15-rc7版本中其为0x1b个扇区大小，即13.5k的大小，再加上MBR 0.5k，也就是说compressed中的32位保护模式代码在bzImage中的偏移为14k，bootloader就是根据这个参数知道compressed以及后面的real kernel代码的位置，从而将它们加载到1M地址处的（默认1M，也是可以在menuconfig中配置的）。 */
 root_flags:	.word ROOT_RDONLY
-syssize:	.long 0			/* Filled in by build.c */
+syssize:	.long 0			/* Filled in by build.c, 编译后的值为0x93578，约590k */
 ram_size:	.word 0			/* Obsolete */
-vid_mode:	.word SVGA_MODE
+vid_mode:	.word SVGA_MODE /* 编译之后的值为NORMAL_VGA（0xffff），在arch/x86/include/uapi/asm/boot.h中定义了三种模式：NORMAL_VGA(0xffff),EXTENDED_VGA(0xfffe),ASK_VGA(0xfffd) */
 root_dev:	.word 0			/* Filled in by build.c */
 boot_flag:	.word 0xAA55
 
@@ -332,14 +332,14 @@ setup_move_size: .word  0x8000		# size to move, when setup is not
 
 code32_start:				# here loaders can put a different
 					# start address for 32-bit code.
-		.long	0x100000	# 0x100000 = default for big kernel
+		.long	0x100000	# 0x100000 = default for big kernel，在pm.c的protected_mode_jump()函数调用用到了此值（boot_params.hdr.code32_start）
 
 ramdisk_image:	.long	0		# address of loaded ramdisk image
 					# Here the loader puts the 32-bit
 					# address where it loaded the image.
-					# This only will be read by the kernel.
+					# This only will be read by the kernel. bootloader根据传入的-initrd=rootfs.img.gz参数将文件系统镜像文件加载到内存合适的位置，并填充此值
 
-ramdisk_size:	.long	0		# its size in bytes
+ramdisk_size:	.long	0		# its size in bytes，rootfs.img.gz的大小，由bootloader自行计算
 
 bootsect_kludge:
 		.long	0		# obsolete
@@ -348,14 +348,14 @@ heap_end_ptr:	.word	_end+STACK_SIZE-512
 					# (Header version 0x0201 or later)
 					# space from here (exclusive) down to
 					# end of setup code can be used by setup
-					# for local heap purposes.
+					# for local heap purposes. STACK_SIZE定义在arch/x86/boot/boot.h中，值为1024，最小的栈大小；_end定义在arch/x86/boot/setup.ld中，表示setup部分代码（64k~1M）的最末端（注：_end位于bss段末尾的16字节align处）
 
 ext_loader_ver:
 		.byte	0		# Extended boot loader version
 ext_loader_type:
 		.byte	0		# Extended boot loader type
 
-cmd_line_ptr:	.long	0		# (Header version 0x0202 or later)
+cmd_line_ptr:	.long	0		# (Header version 0x0202 or later) cmd_line的加载位置也是由bootloader把cmd_line内容存放在0x10000一下的某个位置后，再把那个值告诉内核的
 					# If nonzero, a 32-bit pointer
 					# to the kernel command line.
 					# The command line should be
@@ -378,7 +378,7 @@ initrd_addr_max: .long 0x7fffffff
 					# but leave it at 2 GB to avoid
 					# possible bootloader bugs.
 
-kernel_alignment:  .long CONFIG_PHYSICAL_ALIGN	#physical addr alignment
+kernel_alignment:  .long CONFIG_PHYSICAL_ALIGN	#physical addr alignment 默认2M
 						#required for protected mode
 						#kernel
 #ifdef CONFIG_RELOCATABLE
@@ -622,7 +622,7 @@ start_of_setup:
 6:
 
 # Check signature at end of setup
-	cmpl	$0x5a5aaa55, setup_sig  # setup.bin文件的最后4个字节
+	cmpl	$0x5a5aaa55, setup_sig  # setup.bin文件的最后4个字节，在setup.ld中定义
 	jne	setup_bad   # debug地址为0x102c5
 
 # Zero the bss

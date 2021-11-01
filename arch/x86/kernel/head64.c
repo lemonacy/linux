@@ -522,7 +522,7 @@ void __init x86_64_start_reservations(char *real_mode_data)
 		break;
 	}
 
-	start_kernel();
+	start_kernel();	/* goto init/main.c#start_kernel() */
 }
 
 /*

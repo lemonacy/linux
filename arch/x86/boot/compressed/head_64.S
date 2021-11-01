@@ -135,7 +135,7 @@ SYM_FUNC_START(startup_32)
  */
 
 #ifdef CONFIG_RELOCATABLE
-	movl	%ebp, %ebx
+	movl	%ebp, %ebx  /* 此时ebp保持的是startup_32的物理地址，即0x100000 */
 
 #ifdef CONFIG_EFI_STUB
 /*
@@ -156,12 +156,12 @@ SYM_FUNC_START(startup_32)
      * CONFIG_PHYSICAL_ALIGN = 2M
      * LOAD_PHYSICAL_ADDR为CONFIG_PHYSICAL_START 2M对齐的位置，默认为16M（可在menuconfig里配置）。
      */
-	movl	BP_kernel_alignment(%esi), %eax /* debug: BP_kernel_alignment(%esi) 为2M */
+	movl	BP_kernel_alignment(%esi), %eax /* esi保存的是boot_params的地址，BP_kernel_alignment(%esi)是取kernel_alignment的地址，整条指令的作用是取kernel_alignment的值存入eax，kernel_alignment定义在arch/x86/boot/header.S中（kernel_alignment:  .long CONFIG_PHYSICAL_ALIGN），CONFIG_PHYSICAL_ALIGN可以通过make menuconfig修改，默认值0x200000（2M）。 debug: BP_kernel_alignment(%esi) 为2M */
 	decl	%eax
 	addl	%eax, %ebx
 	notl	%eax
 	andl	%eax, %ebx  /* debug: ebx本来为0x100000,2M对齐后其值为0x200000，但还是小于LOAD_PHYSICAL_ADDR(16M) */
-	cmpl	$LOAD_PHYSICAL_ADDR, %ebx
+	cmpl	$LOAD_PHYSICAL_ADDR, %ebx   /* LOAD_PHYSICAL_ADDR定义在arch/x86/include/asm/boot.h中，define LOAD_PHYSICAL_ADDR ((CONFIG_PHYSICAL_START + (CONFIG_PHYSICAL_ALIGN - 1)) & ~(CONFIG_PHYSICAL_ALIGN - 1))，这又是个类似分宿舍的对齐算法，CONFIG_PHYSICAL_ALIGN默认为2M，CONFIG_PHYSICAL_START默认为16M，两者都可以在make menuconfig中修改。 */
     /*  */
 	jae	1f
 #endif
@@ -169,15 +169,15 @@ SYM_FUNC_START(startup_32)
 1:
 
 	/* Target address to relocate to for decompression */
-    /* init_size为压缩的内核和解压后内核大小取max */
-	addl	BP_init_size(%esi), %ebx    /* debug: BP_init_size(%esi)为0x203b000(比未压缩内核arch/x86/boot/compressed/vmlinux.bin的size稍微大一点)，ebx为0x303b000*/
+    /* init_size为压缩的内核和解压后内核大小取max，init_size定义在arch/x86/boot/header.S中，有比较复杂的一段宏根据编译期间的数值计算出来的 */
+	addl	BP_init_size(%esi), %ebx    /* debug: BP_init_size(%esi)为0x203b000(比未压缩内核arch/x86/boot/compressed/vmlinux.bin的size稍微大一点)，ebx加之前为16M，加之后为0x303b000（48+M）*/
     /*
      * ebx - _end压缩的内核大小（.head.text+.rodata..compressed+.text+.data+.bss），则得到了压缩内核将要移动到的起始地址。
-     * 此处为什么要减掉_end，其实道理很简单：8+M的内核(中间包含压缩数据)被bootloader加载到1M，内核规定解压到16M处，32M为未压缩的内核大小。
-     * 16+32-8=40M处放置压缩的内核，然后再从前往后解压，即实现了原地自解压(inplace-decompression)，这样不好发生覆盖的现象，也用32M的内存(16~48M)就解决问题。
+     * 此处为什么要减掉_end，其实道理很简单：8+M的内核(中间包含压缩数据)被bootloader加载到1M，内核规定解压到16M处，未压缩的内核大小有32+M，我们准备了16M至48+M的内存为解压缓冲区。
+     * 然后我们将8+M的压缩内核从1M的地方移动到16M~48M缓冲区的末尾，大约存在在40~48M左右的内存空间，然后再解压到16M的内存处，这样就自然而然实现了原地自解压(inplace-decompression)，而不会发生覆盖现象。
      * 此处的_end为compressed/vmlinux.lds.S中定义的_end
      */
-	subl	$ rva(_end), %ebx   /* debug: rva(_end)为0x867000（大小和arch/x86/boot/compressed/vmlinux差不多），减完后ebx为0x27d4000 */
+	subl	$ rva(_end), %ebx   /* _end为压缩内核的末尾位置，rva(_end)为压缩内核加载到1M内存后现对于startup_32的偏移，代表的就是压缩内核的大小（即8M多），减完后ebx为39M多，和推断的一致。 debug: rva(_end)为0x867000（大小和arch/x86/boot/compressed/vmlinux差不多），减完后ebx为0x27d4000 */
 
 /*
  * Prepare for entering 64 bit mode
@@ -205,10 +205,10 @@ SYM_FUNC_START(startup_32)
 1:
 
 	/* Initialize Page tables to 0 */
-	leal	rva(pgtable)(%ebx), %edi
+	leal	rva(pgtable)(%ebx), %edi    /* pgtable定位在本文件的最后面，在压缩的内核中是占空间的 */
 	xorl	%eax, %eax
-	movl	$(BOOT_INIT_PGT_SIZE/4), %ecx
-	rep	stosl
+	movl	$(BOOT_INIT_PGT_SIZE/4), %ecx   /* BOOT_INIT_PGT_SIZE定义在arch/x86/include/asm/boot.h中（define BOOT_INIT_PGT_SIZE (6*4096)），即6个页表大小 */
+	rep	stosl   /* 此处清空的是未来压缩内核要移动到的大于39M的内存，猜测pgtable位于bzImage的最后面，而且此部分代码也是非压缩的，这样下面建立的页表将来解压缩的时候也不会被覆盖 */
 
 	/* Build Level 4 */
 	leal	rva(pgtable + 0)(%ebx), %edi
@@ -240,7 +240,7 @@ SYM_FUNC_START(startup_32)
 
 	/* Enable the boot page tables */
 	leal	rva(pgtable)(%ebx), %eax
-	movl	%eax, %cr3  /* debug: 物理地址为0x1000ee */
+	movl	%eax, %cr3  /* cr3中存的即为页表的地址，debug: 物理地址为0x1000ee */
 
 	/* Enable Long mode in EFER (Extended Feature Enable Register) */
 	movl	$MSR_EFER, %ecx /* debug: MSR_EFER值为$0xc0000080 */
@@ -248,7 +248,7 @@ SYM_FUNC_START(startup_32)
 	btsl	$_EFER_LME, %eax    /* debug: _EFER_LME值为0x8 */
 	wrmsr
 
-	/* After gdt is loaded */
+	/* After ldt is loaded */
 	xorl	%eax, %eax
 	lldt	%ax
 	movl    $__BOOT_TSS, %eax   /* __BOOT_TSS = 0x20 */
@@ -264,7 +264,7 @@ SYM_FUNC_START(startup_32)
 	 * We place all of the values on our mini stack so lret can
 	 * used to perform that far jump.
 	 */
-	leal	rva(startup_64)(%ebp), %eax /* debug: rva(startup_64)(%ebp)值为0x100200 */
+	leal	rva(startup_64)(%ebp), %eax /* debug: rva(startup_64)(%ebp)值为0x100200，ebp为0x100000，startup_64的偏移为0x200，下面可以看到.org 0x200的显式位置指定 */
 #ifdef CONFIG_EFI_MIXED
 	movl	rva(efi32_boot_args)(%ebp), %edi
 	testl	%edi, %edi
@@ -504,7 +504,7 @@ trampoline_return:
  * Copy the compressed kernel to the end of our buffer
  * where decompression in place becomes safe.
  */
-	pushq	%rsi
+	pushq	%rsi    /* rsi保存的是boot_params地址 */
 	leaq	(_bss-8)(%rip), %rsi    /* debug:      _bss-8=0x83ab02, rip=0x1002b6,  rsi=0x93adb8 */
 	leaq	rva(_bss-8)(%rbx), %rdi /* debug: rva(_bss-8)=0x83adb8, rbx=0x27d4000, rdi=0x300edb8 */
 	movl	$(_bss - startup_32), %ecx  /* ecx=0x83adc0 (内核大小为8+M，符合我们的预期) */
@@ -512,23 +512,23 @@ trampoline_return:
 	std
 	rep	movsq
 	cld
-	popq	%rsi
+	popq	%rsi    /* 恢复rsi保存boot_params地址 */
 
 	/*
 	 * The GDT may get overwritten either during the copy we just did or
 	 * during extract_kernel below. To avoid any issues, repoint the GDTR
 	 * to the new copy of the GDT.
 	 */
-	leaq	rva(gdt64)(%rbx), %rax
+	leaq	rva(gdt64)(%rbx), %rax  /* gdt64只定义了limit和address，共享了gdt的内容。rbx为未解压内核移动后的地址（大约在39M多的位置） */
 	leaq	rva(gdt)(%rbx), %rdx
-	movq	%rdx, 2(%rax)
+	movq	%rdx, 2(%rax)   /* 这里为什么要偏移2个字节的位置，因为gdt中的前2个字节定义了gdt的limit */
 	lgdt	(%rax)
 
 /*
  * Jump to the relocated address.
  */
 	leaq	rva(.Lrelocated)(%rbx), %rax    /* debug: rva(.Lrelocated)=0x82d670, rax=0x3001670 */
-	jmp	*%rax   /* debug: 物理地址0x1002e7, rax=0x3001670 */
+	jmp	*%rax   /* debug: 物理地址0x1002e7, rax=0x3001670，这条指令是在1M多地址上执行的最后一条指令，马上就要调整到移动后的未解压内核去执行了（跳转到39M多的地址去执行，其实是48M多的地方，因为Lrelocated定义在.text段，和当前代码执行的.head.text段不是同一个端，.text段编译后位于bzImage的末尾 ） */
 SYM_CODE_END(startup_64)
 
 #ifdef CONFIG_EFI_STUB
@@ -547,7 +547,7 @@ SYM_FUNC_END_ALIAS(efi_stub_entry)
 
 	.text
 SYM_FUNC_START_LOCAL_NOALIGN(.Lrelocated)
-/* debug: 已经将内核从原来1M开始的8+M位置复制到了0x27d4000（39M+350kb）处 */
+/* debug: 已经将内核从原来1M开始的8+M位置复制到了0x27d4000（39M+350kb）处，并跳转到移动后的内核代码中执行 */
 /*
  * Clear BSS (stack is currently empty)
  */
@@ -586,13 +586,14 @@ SYM_FUNC_START_LOCAL_NOALIGN(.Lrelocated)
 	movl	input_len(%rip), %ecx	/* input_len */
 	movq	%rbp, %r8		/* output target address */
 	movl	output_len(%rip), %r9d	/* decompressed length, end of relocs */
-	call	extract_kernel		/* returns kernel location in %rax */   /* debug: 物理地址0x3001201 */
-	popq	%rsi
+	call	extract_kernel		/* returns kernel location in %rax */   /* extract_kernel方法执行完后将解压内核的起始地址通过rax返回，接下来就调整到这个位置去继续执行代码。debug: 物理地址0x3001201 */
+	hlt
+	popq	%rsi    /* rsi继续指向boot_params */
 
 /*
  * Jump to the decompressed kernel.
  */
-	jmp	*%rax   /* debug: 物理地址0x30016c7，rax=0x1000000 (如果启动命令行参数带nokaslr则rax=0x1000000(16M)，否则随地移动的地址就固定了，好比在一次调试中rax=0x3400000[52M])，下面就跳转到arch/x86/kernel/head_64.S去执行了。 */
+	jmp	*%rax   /* debug: 物理地址0x30016c7，rax=0x1000000 (如果启动命令行参数带nokaslr则rax=0x1000000(16M)，否则位置就随机了，好比在一次调试中rax=0x3400000[52M])，下面就跳转到arch/x86/kernel/head_64.S去执行了。 */
 SYM_FUNC_END(.Lrelocated)
 
 	.code32
@@ -829,7 +830,7 @@ SYM_DATA_END_LABEL(boot_stack, SYM_L_LOCAL, boot_stack_end)
  */
 	.section ".pgtable","aw",@nobits
 	.balign 4096
-SYM_DATA_LOCAL(pgtable,		.fill BOOT_PGT_SIZE, 1, 0)
+SYM_DATA_LOCAL(pgtable,		.fill BOOT_PGT_SIZE, 1, 0)  /* BOOT_PGT_SIZE定义在arch/x86/include/asm/boot.h中，默认6*4096。检查到CONFIG_RANDOMIZE_BASE和CONFIG_X86_VERBOSE_BOOTUP在编译的时候默认都是y，所以这块的BOOT_PGT_SIZE其实有19*4096大小 *
 
 /*
  * The page table is going to be used instead of page table in the trampoline

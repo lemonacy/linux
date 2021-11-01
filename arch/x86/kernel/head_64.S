@@ -41,7 +41,7 @@ L3_START_KERNEL = pud_index(__START_KERNEL_map) /* L3_START_KERNEL=510 */
 	.text
 	__HEAD
 	.code64
-SYM_CODE_START_NOALIGN(startup_64)
+SYM_CODE_START_NOALIGN(startup_64)  /* 为什么解压缩后这个函数刚好在16M的位置？这是因为此处的__HEAD宏让这个函数是位于vmlinux代码段的最开始处（readelf vmlinux -s |grep startup_64，结果：ffffffff81000000    60 NOTYPE  GLOBAL DEFAULT    1 startup_64，再通过readelf vmlinux -l，可知代码段起始虚拟地址为0xffffffff81000000），vmlinux将被压缩后放置在bzImage中 */
 	UNWIND_HINT_EMPTY
 	/*
 	 * At this point the CPU runs in 64bit mode CS.L = 1 CS.D = 0,
@@ -277,7 +277,7 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	 */
 	pushq	$.Lafter_lret	# put return address on stack for unwinder
 	xorl	%ebp, %ebp	# clear frame pointer
-	movq	initial_code(%rip), %rax    /* debug=> 0xffffffff810000fb:  mov    0x1640c16(%rip),%rax        # 0xffffffff82640d18为initial_code的地址, rax=0xffffffff82a134c4 */
+	movq	initial_code(%rip), %rax    /* debug=> 0xffffffff810000fb:  mov    0x1640c16(%rip),%rax        # 0xffffffff82640d18为initial_code的地址, rax=0xffffffff82a134c4(inital_code就在本文件的头部定义，其值为：x86_64_start_kernel) */
 	pushq	$__KERNEL_CS	# set correct cs    debug=> 0xffffffff81000102:  pushq  $0x10
 	pushq	%rax		# target address in negative space
 	lretq   # debug=> 0xffffffff81000105:  lretq，跳转到arch/x86/kernel/head64.c的x86_64_start_kernel()去执行。

@@ -133,11 +133,23 @@ static void init_heap(void)
 
 void main(void)
 {
+	puts("enter C-code main in 16-bit\n");	/* puts()通过bios int 0x10中断输出到屏幕上，无需console_init()即可使用 */
 	/* First, copy the boot header into the "zeropage" */
 	copy_boot_params();
 
 	/* Initialize the early-boot console */
 	console_init();
+
+	/* asran debug info */
+	if(early_serial_base == 0x3f8)
+		puts("early_serial_base=0x3f8\n");
+	else if (early_serial_base == 0x2f8)
+		puts("early_serial_base=0x2f8\n");
+	else if (early_serial_base == 0)
+		puts("early_serial_base=0\n");
+	else
+		puts("early_serial_base=else\n");
+
 	if (cmdline_find_option_bool("debug"))
 		puts("early console in setup code\n");
 
@@ -174,7 +186,7 @@ void main(void)
 #endif
 
 	/* Set the video mode */
-	set_video();
+	set_video(); /* 设置显示器text display mode，同时进行清屏操作 */
 
 	/* Do the last things and invoke protected mode */
 	go_to_protected_mode();
