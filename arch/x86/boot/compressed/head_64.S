@@ -214,7 +214,7 @@ SYM_FUNC_START(startup_32)
 	leal	rva(pgtable + 0)(%ebx), %edi
 	leal	0x1007 (%edi), %eax	/* 此处edi偏移0x1007，其中0x1000是PML4自身的大小4k，因为PML4位于pgtable的第一个4k，PML3位于pgtable的第二个4k，PML4中存的PML3页表的地址，所以这里要加0x1000。0x7是页表的falgs，表示PRESENT+RW+USER。 */
 	movl	%eax, 0(%edi)	/* 由于目前初始化的4G地址空间的early page table，所以页表项中的低32位就可以表达，下面将edx赋给高4位暂时还不清楚SEV的高级用法。 */
-	addl	%edx, 4(%edi)
+	addl	%edx, 4(%edi)	/* 在页表的高32位地址中设置SEV标记，暂时不研究其作用了 */
 
 	/* Build Level 3, 开启了PAE后，在9-9-9-21的地址分段中，Lv3的4个表刚好对应31-30 2位 */
 	leal	rva(pgtable + 0x1000)(%ebx), %edi
