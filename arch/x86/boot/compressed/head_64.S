@@ -183,7 +183,7 @@ SYM_FUNC_START(startup_32)
  * Prepare for entering 64 bit mode
  */
 
-	/* Enable PAE mode */
+	/* Enable PAE mode, 开启PAE-物理地址增强模式，32根地址线就变48根了，可以映射到大于4G的物理内存（虽然代码逻辑上只能访问4G大小的空间，但PAE机制可以把这个4G的空间映射到大于4G的物理内存上。），在页表项中第7位叫做PS(PageSize)，如果为1表示其对应的是一个2M的页。下面初始化Level2页表项时，0x183中的8即对应PS位。 */
 	movl	%cr4, %eax
 	orl	$X86_CR4_PAE, %eax
 	movl	%eax, %cr4
@@ -210,13 +210,13 @@ SYM_FUNC_START(startup_32)
 	movl	$(BOOT_INIT_PGT_SIZE/4), %ecx   /* BOOT_INIT_PGT_SIZE定义在arch/x86/include/asm/boot.h中（define BOOT_INIT_PGT_SIZE (6*4096)），即6个页表大小 */
 	rep	stosl   /* 此处清空的是未来压缩内核要移动到的大于39M的内存，猜测pgtable位于bzImage的最后面，而且此部分代码也是非压缩的，这样下面建立的页表将来解压缩的时候也不会被覆盖 */
 
-	/* Build Level 4 */
+	/* Build Level 4, 对应48位地址线的47-39位 */
 	leal	rva(pgtable + 0)(%ebx), %edi
 	leal	0x1007 (%edi), %eax	/* 此处edi偏移0x1007，其中0x1000是PML4自身的大小4k，因为PML4位于pgtable的第一个4k，PML3位于pgtable的第二个4k，PML4中存的PML3页表的地址，所以这里要加0x1000。0x7是页表的falgs，表示PRESENT+RW+USER。 */
 	movl	%eax, 0(%edi)	/* 由于目前初始化的4G地址空间的early page table，所以页表项中的低32位就可以表达，下面将edx赋给高4位暂时还不清楚SEV的高级用法。 */
 	addl	%edx, 4(%edi)
 
-	/* Build Level 3 */
+	/* Build Level 3, 开启了PAE后，在9-9-9-21的地址分段中，Lv3的4个表刚好对应31-30 2位 */
 	leal	rva(pgtable + 0x1000)(%ebx), %edi
 	leal	0x1007(%edi), %eax
 	movl	$4, %ecx	/* PML3页表也占4k大小，但只填充4项PML2的配置 */
@@ -227,7 +227,7 @@ SYM_FUNC_START(startup_32)
 	decl	%ecx
 	jnz	1b
 
-	/* Build Level 2 */
+	/* Build Level 2, 开启了PAE后，在9-9-9-21的地址分段中，lv2页目录的512项刚好对应29-21中间9位，剩下的21位（刚好对应2M）对应页内的offset。由于2048个页表将低4G空间平铺映射了，所以开启分页后的线性地址和没分页的物理地址一一对应，在下面启动分页机制后，代码的地址无需做任何调整即可继续执行。 */
 	leal	rva(pgtable + 0x2000)(%ebx), %edi	/* 4个PML2页表位于pgtable的第3个4k处 */
 	movl	$0x00000183, %eax	/* 0x183 flags: PRESENT + WRITE + MBZ，3 - present和write，8 - 页大小是4k还是2M（此处为1，表示2M）；1 - G位(Global)表示全局页，该页将在高速缓冲器TLB中一直保存 */
 	movl	$2048, %ecx	/* 2048个PML1页表项，每个描述2M的段，一共2048 * 2M = 4G */

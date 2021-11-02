@@ -339,7 +339,7 @@ ramdisk_image:	.long	0		# address of loaded ramdisk image
 					# address where it loaded the image.
 					# This only will be read by the kernel. bootloader根据传入的-initrd=rootfs.img.gz参数将文件系统镜像文件加载到内存合适的位置，并填充此值
 
-ramdisk_size:	.long	0		# its size in bytes，rootfs.img.gz的大小，由bootloader自行计算
+ramdisk_size:	.long	0		# its size in bytes，rootfs.img.gz的大小，由bootloader计算填充
 
 bootsect_kludge:
 		.long	0		# obsolete
@@ -355,7 +355,7 @@ ext_loader_ver:
 ext_loader_type:
 		.byte	0		# Extended boot loader type
 
-cmd_line_ptr:	.long	0		# (Header version 0x0202 or later) cmd_line的加载位置也是由bootloader把cmd_line内容存放在0x10000一下的某个位置后，再把那个值告诉内核的
+cmd_line_ptr:	.long	0		# (Header version 0x0202 or later) cmd_line的加载位置也是由bootloader把cmd_line内容存放在0x100000以下的某个位置后，再把那个值告诉内核的
 					# If nonzero, a 32-bit pointer
 					# to the kernel command line.
 					# The command line should be

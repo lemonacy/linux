@@ -151,7 +151,7 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	movq	%rcx, %cr4  /* debug: rcx=0xa0 （设置虚拟8086模式等）*/
 
 	/* Setup early boot stage 4-/5-level pagetables. */
-	addq	phys_base(%rip), %rax   /* debug: add 0x1415f9d(%rip),%rax, phys_base(%rip)=0(物理基地址为0), rax=0x2a6e000 *;
+	addq	phys_base(%rip), %rax   /* debug: add 0x1415f9d(%rip),%rax, phys_base(%rip)=0(物理基地址为0), rax=0x2a6e000 */
 
 	/*
 	 * For SEV guests: Verify that the C-bit is correct. A malicious
