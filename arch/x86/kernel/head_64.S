@@ -64,14 +64,14 @@ SYM_CODE_START_NOALIGN(startup_64)  /* 为什么解压缩后这个函数刚好�
 	/* Set up the stack for verify_cpu(), similar to initial_stack below */
 	leaq	(__end_init_task - SIZEOF_PTREGS)(%rip), %rsp   /* debug: __end_init_task - SIZEOF_PTREGS=0x1403f51, SIZEOF_PTREGS=21*8, rip=0x1000000, rsp=0x2403f58 */
 
-	leaq	_text(%rip), %rdi   /* debug: _text=-0xe, rdi=0x1000000 */
-	pushq	%rsi
+	leaq	_text(%rip), %rdi   /* debug: _text=-0xf, rdi=0x1000000, rid保存startup_64的内存地址（默认16M处）, rdi为下面调用startup_64_setup_env的第一个参数 */
+	pushq	%rsi	/* rsi保存的还是boot_params，位置0x139f0 */
 	call	startup_64_setup_env
 	popq	%rsi
 
 	/* Now switch to __KERNEL_CS so IRET works reliably */
 	pushq	$__KERNEL_CS    /* __KERNEL_CS=0x10 */
-	leaq	.Lon_kernel_cs(%rip), %rax  /* debug: rax=0x1000021 */
+	leaq	.Lon_kernel_cs(%rip), %rax  /* lea    0x3(%rip),%rax  # rax=0x1000021 */
 	pushq	%rax
 	lretq   /* debug: 物理地址0x100001f */
 
@@ -87,14 +87,14 @@ SYM_CODE_START_NOALIGN(startup_64)  /* 为什么解压缩后这个函数刚好�
 	 * is active) to be added to the initial pgdir entry that will be
 	 * programmed into CR3.
 	 */
-	leaq	_text(%rip), %rdi
+	leaq	_text(%rip), %rdi /* lea    -0x2d(%rip),%rdi        # 0x1000000 */
 	pushq	%rsi
 	call	__startup_64    /* 初始化early_top_pgt等 */
 	popq	%rsi
 
 	/* Form the CR3 value being sure to include the CR3 modifier */
-	addq	$(early_top_pgt - __START_KERNEL_map), %rax
-	jmp 1f  /* debug: 物理地址0x100003a */
+	addq	$(early_top_pgt - __START_KERNEL_map), %rax /* add    $0x2a6e000,%rax # rax=0x2a6e000 */
+	jmp 1f  /* jmp    0x1000052 */
 SYM_CODE_END(startup_64)
 
 SYM_CODE_START(secondary_startup_64)
@@ -182,7 +182,7 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	 * addresses where we're currently running on. We have to do that here
 	 * because in 32bit we couldn't load a 64bit linear address.
 	 */
-	lgdt	early_gdt_descr(%rip)   /* debug: 开启了分页模式后，虚拟地址为0xffffffff81000089(lgdt 0x1415f70(%rip), rip=0xffffffff81000089)。物理地址为0x1000089 */
+	lgdt	early_gdt_descr(%rip)   /* debug: 使用了高地址页表(early_top_gpt)映射后，虚拟地址为0xffffffff81000089(lgdt 0x1415f70(%rip), rip=0xffffffff81000089)。物理地址为0x1000089 */
 
 	/* set up data segments */ /* 将数据段寄存器都清0，为什么呢？？难道下面使用的时候再具体赋值？ */
 	xorl %eax,%eax

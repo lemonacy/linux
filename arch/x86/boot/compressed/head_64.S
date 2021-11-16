@@ -587,7 +587,7 @@ SYM_FUNC_START_LOCAL_NOALIGN(.Lrelocated)
 	movq	%rbp, %r8		/* output target address */
 	movl	output_len(%rip), %r9d	/* decompressed length, end of relocs */
 	call	extract_kernel		/* returns kernel location in %rax */   /* extract_kernel方法执行完后将解压内核的起始地址通过rax返回，接下来就调整到这个位置去继续执行代码。debug: 物理地址0x3001201 */
-	hlt
+
 	popq	%rsi    /* rsi继续指向boot_params */
 
 /*

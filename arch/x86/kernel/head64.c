@@ -85,9 +85,9 @@ static struct desc_ptr startup_gdt_descr = {
 
 #define __head	__section(".head.text")
 
-static void __head *fixup_pointer(void *ptr, unsigned long physaddr)
+static void __head *fixup_pointer(void *ptr, unsigned long physaddr)	/* 计算ptr的物理地址，ptr是一个大于0xffffffff81000000的高地址 */
 {
-	return ptr - (void *)_text + (void *)physaddr;
+	return ptr - (void *)_text + (void *)physaddr;	/* _text为0xffffffff81000000，physaddr为16M */
 }
 
 static unsigned long __head *fixup_long(void *ptr, unsigned long physaddr)
@@ -132,8 +132,8 @@ static bool __head check_la57_support(unsigned long physaddr)
  * boot-time crashes. To work around this problem, every global pointer must
  * be adjusted using fixup_pointer().
  */
-unsigned long __head __startup_64(unsigned long physaddr,
-				  struct boot_params *bp)
+unsigned long __attribute__((optimize("O0"))) __head __startup_64(unsigned long physaddr,
+				  struct boot_params *bp) /* 第一个参数有rdi传入，第二个参数有rsi传入 */
 {
 	unsigned long vaddr, vaddr_end;
 	unsigned long load_delta, *p;
@@ -164,7 +164,7 @@ unsigned long __head __startup_64(unsigned long physaddr,
 		for (;;);
 
 	/* Activate Secure Memory Encryption (SME) if supported and enabled */
-	sme_enable(bp);
+	sme_enable(bp); /* arch/x86/include/asm/mem_encrypt.h中定义的空方法，不会生成汇编指令 */
 
 	/* Include the SME encryption mask in the fixup value */
 	load_delta += sme_get_me_mask();
@@ -172,12 +172,12 @@ unsigned long __head __startup_64(unsigned long physaddr,
 	/* Fixup the physical addresses in the page table */
 
 	pgd = fixup_pointer(&early_top_pgt, physaddr);
-	p = pgd + pgd_index(__START_KERNEL_map);
+	p = pgd + pgd_index(__START_KERNEL_map); /* 根据__START_KERNEL_map计算得出511，因为后面要对early_top_pgt[511]赋值 */
 	if (la57)
 		*p = (unsigned long)level4_kernel_pgt;
 	else
 		*p = (unsigned long)level3_kernel_pgt;  /* 给early_top_pgt[511]赋值 */
-	*p += _PAGE_TABLE_NOENC - __START_KERNEL_map + load_delta;
+	*p += _PAGE_TABLE_NOENC - __START_KERNEL_map + load_delta; /* 设置页目录项属性，arch/x86/include/asm/pgtable_types.h:195:#define _PAGE_TABLE_NOENC       (__PP|__RW|_USR|___A|   0|___D|   0|   0) */
 
 	if (la57) {
 		p4d = fixup_pointer(&level4_kernel_pgt, physaddr);
@@ -559,8 +559,8 @@ static void set_bringup_idt_handler(gate_desc *idt, int n, void *handler)
 /* This runs while still in the direct mapping */
 static void startup_64_load_idt(unsigned long physbase)
 {
-	struct desc_ptr *desc = fixup_pointer(&bringup_idt_descr, physbase);
-	gate_desc *idt = fixup_pointer(bringup_idt_table, physbase);
+	struct desc_ptr *desc = fixup_pointer(&bringup_idt_descr, physbase); /* 这里和刚才设置gdt有一点点不同就是把idt_desr的物理地址也计算了一遍，下面native_load_idt用的是物理地址。此处的&bringup_idt_descr取地址操作不用通过rip动态计算，编译的实时就确定了，fixup_pointer inline函数调用被优化为了2条指令：lea    -0x7dbe9fc0(%rdi),%rax和sub    $0xffffffff81000000,%rax，这里编译优化后根本就没有了赋值给desc的指令，rax就代表了desc变量 */
+	gate_desc *idt = fixup_pointer(bringup_idt_table, physbase); /* 对应的汇编指令为：lea    -0x7dbfc000(%rdi),%rdx和sub    $0xffffffff81000000,%rdx，rdx中保存了idt的值 */
 
 
 	if (IS_ENABLED(CONFIG_AMD_MEM_ENCRYPT)) {
@@ -571,8 +571,8 @@ static void startup_64_load_idt(unsigned long physbase)
 		set_bringup_idt_handler(idt, X86_TRAP_VC, handler);
 	}
 
-	desc->address = (unsigned long)idt;
-	native_load_idt(desc);
+	desc->address = (unsigned long)idt; /* debug: mov    %rdx,0x2(%rax) */
+	native_load_idt(desc); /* debug: lidt   (%rax) */
 }
 
 /* This is used when running on kernel addresses */
@@ -592,8 +592,8 @@ void early_setup_idt(void)
 void __head startup_64_setup_env(unsigned long physbase)
 {
 	/* Load GDT */
-	startup_gdt_descr.address = (unsigned long)fixup_pointer(startup_gdt, physbase);
-	native_load_gdt(&startup_gdt_descr);
+	startup_gdt_descr.address = (unsigned long)fixup_pointer(startup_gdt, physbase);	/* physbase由rdi传入进来，值为16M，此处计算startup_gdt的物理地址（startup_gdt为0xffffffff82416040） */
+	native_load_gdt(&startup_gdt_descr);	/* native_load_gdt定义在arch/x86/include/asm/desc.h中的inline函数，就简单的一条lgdt指令。startup_gdt_descr的地址为0xffffffff8100022c，对其取地址就相对于startup_gdt_descr($rip)操作，debug可获得对应的指令为：lgdt   0x1415a12(%rip)，0x1415a12(%rip)的计算结果为0x2416030，即&startup_gdt_descr的结果为0x2416030，目前线性地址和物理地址是完全对应的。*/
 
 	/* New GDT is live - reload data segment registers */
 	asm volatile("movl %%eax, %%ds\n"
