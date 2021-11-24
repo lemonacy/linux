@@ -82,7 +82,7 @@ struct task_struct init_task
 	.cpus_ptr	= &init_task.cpus_mask,
 	.cpus_mask	= CPU_MASK_ALL,
 	.nr_cpus_allowed= NR_CPUS,
-	.mm		= NULL,
+	.mm		= NULL, /* 内核线程和普通的进程间的区别在于内核线程没有独立的地址空间，mm指针被设置为NULL；它只在 内核空间运行，从来不切换到用户空间去；并且和普通进程一样，可以被调度，也可以被抢占。 */
 	.active_mm	= &init_mm,
 	.restart_block	= {
 		.fn = do_no_restart_syscall,
