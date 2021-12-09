@@ -81,7 +81,7 @@ void * __meminit vmemmap_alloc_block_buf(unsigned long size, int node,
 	if (altmap)
 		return altmap_alloc_block_buf(size, altmap);
 
-	ptr = sparse_buffer_alloc(size);
+	ptr = sparse_buffer_alloc(size); // 由于之前已经通过sparse_buffer_init()申请了一块2M的buffer内存，这里直接从buffer中申请
 	if (!ptr)
 		ptr = vmemmap_alloc_block(size, node);
 	return ptr;
@@ -251,8 +251,8 @@ int __meminit vmemmap_populate_basepages(unsigned long start, unsigned long end,
 struct page * __meminit __populate_section_memmap(unsigned long pfn,
 		unsigned long nr_pages, int nid, struct vmem_altmap *altmap)
 {
-	unsigned long start = (unsigned long) pfn_to_page(pfn);
-	unsigned long end = start + nr_pages * sizeof(struct page);
+	unsigned long start = (unsigned long) pfn_to_page(pfn); // vmemmap + (pfn), start=0xffffea0000000000(vmemmap_base)
+	unsigned long end = start + nr_pages * sizeof(struct page); // end=0xffffea0000200000(2M)，即一个section->section_mem_map指向一个32768大小的page struct数组，sizeof(struct page)=64，则这个page数组占连续的2M虚拟地址空间
 
 	if (WARN_ON_ONCE(!IS_ALIGNED(pfn, PAGES_PER_SUBSECTION) ||
 		!IS_ALIGNED(nr_pages, PAGES_PER_SUBSECTION)))

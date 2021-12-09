@@ -33,8 +33,8 @@
 #define l4_index(x)	(((x) >> 39) & 511) /* 取L4的index，39~47位 */
 #define pud_index(x)	(((x) >> PUD_SHIFT) & (PTRS_PER_PUD-1)) /* 取L3的index，30~38位 */
 
-L4_PAGE_OFFSET = l4_index(__PAGE_OFFSET_BASE_L4)    /* __PAGE_OFFSET_BASE_L4=0xffff888000000000 */
-L4_START_KERNEL = l4_index(__START_KERNEL_map)  /* __START_KERNEL_map=0xffffffff80000000 内核虚拟地址的起始位置。L4_START_KERNEL=511  */
+L4_PAGE_OFFSET = l4_index(__PAGE_OFFSET_BASE_L4)    /* __PAGE_OFFSET_BASE_L4=0xffff888000000000，PAGE_OFFSET内核态地址空间的界限，大约在地址空间的末尾119.5T处，这个空间足够满足内核的运行需要了。 */
+L4_START_KERNEL = l4_index(__START_KERNEL_map)  /* __START_KERNEL_map=0xffffffff80000000 内核虚拟地址的起始位置，距离地址空间末尾800M处。L4_START_KERNEL=511  */
 
 L3_START_KERNEL = pud_index(__START_KERNEL_map) /* L3_START_KERNEL=510 */
 
@@ -62,7 +62,7 @@ SYM_CODE_START_NOALIGN(startup_64)  /* 为什么解压缩后这个函数刚好�
 	 */
 
 	/* Set up the stack for verify_cpu(), similar to initial_stack below */
-	leaq	(__end_init_task - SIZEOF_PTREGS)(%rip), %rsp   /* debug: __end_init_task - SIZEOF_PTREGS=0x1403f51, SIZEOF_PTREGS=21*8, rip=0x1000000, rsp=0x2403f58 */
+	leaq	(__end_init_task - SIZEOF_PTREGS)(%rip), %rsp   /* debug: __end_init_task - SIZEOF_PTREGS=0x1403f51, SIZEOF_PTREGS=21*8, 21个寄存器需要保存在内核堆栈的顶端pt_regs, rip=0x1000000, rsp=0x2403f58 */
 
 	leaq	_text(%rip), %rdi   /* debug: _text=-0xf, rdi=0x1000000, rid保存startup_64的内存地址（默认16M处）, rdi为下面调用startup_64_setup_env的第一个参数 */
 	pushq	%rsi	/* rsi保存的还是boot_params，位置0x139f0 */
@@ -89,11 +89,11 @@ SYM_CODE_START_NOALIGN(startup_64)  /* 为什么解压缩后这个函数刚好�
 	 */
 	leaq	_text(%rip), %rdi /* lea    -0x2d(%rip),%rdi        # 0x1000000 */
 	pushq	%rsi
-	call	__startup_64    /* 初始化early_top_pgt等 */
+	call	__startup_64    /* 初始化early_top_pgt等，返回rax=0 */
 	popq	%rsi
 
 	/* Form the CR3 value being sure to include the CR3 modifier */
-	addq	$(early_top_pgt - __START_KERNEL_map), %rax /* add    $0x2a6e000,%rax # rax=0x2a6e000 */
+	addq	$(early_top_pgt - __START_KERNEL_map), %rax /* add    $0x2a6e000,%rax # rax=0，相加后rax=0x2a6e000 */
 	jmp 1f  /* jmp    0x1000052 */
 SYM_CODE_END(startup_64)
 
@@ -167,7 +167,7 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	popq	%rsi
 
 	/* Switch to new page-table */
-	movq	%rax, %cr3  /* rax=0x2a6e000 */
+	movq	%rax, %cr3  /* rax=0x2a6e000，加载的是early_top_pgt */
 
 	/* Ensure I am executing from virtual addresses */
 	movq	$1f, %rax   /* mov $0xffffffff81000089,%rax */
@@ -346,7 +346,7 @@ SYM_DATA(initial_vc_handler,	.quad handle_vc_boot_ghcb)
  * The SIZEOF_PTREGS gap is a convention which helps the in-kernel unwinder
  * reliably detect the end of the stack.
  */
-SYM_DATA(initial_stack, .quad init_thread_union + THREAD_SIZE - SIZEOF_PTREGS)
+SYM_DATA(initial_stack, .quad init_thread_union + THREAD_SIZE - SIZEOF_PTREGS) /* initial_stack:计算init_task的内核栈顶地址 */
 	__FINITDATA
 
 	__INIT
@@ -469,13 +469,13 @@ SYM_CODE_END(vc_no_ghcb)
 	__INITDATA
 	.balign 4
 
-SYM_DATA_START_PTI_ALIGNED(early_top_pgt)   /* early_top_pgt[511]在arch/x86/kernel/head64.c#__startup_64()中被赋值(*p = (unsigned long)level3_kernel_pgt;) */
+SYM_DATA_START_PTI_ALIGNED(early_top_pgt)   /* 8k对齐，early_top_pgt[511]在arch/x86/kernel/head64.c#__startup_64()中被赋值(*p = (unsigned long)level3_kernel_pgt;) */
 	.fill	512,8,0
-	.fill	PTI_USER_PGD_FILL,8,0
+	.fill	PTI_USER_PGD_FILL,8,0 /* PTI_USER_PGD_FILL=512 */
 SYM_DATA_END(early_top_pgt)
 
-SYM_DATA_START_PAGE_ALIGNED(early_dynamic_pgts)
-	.fill	512*EARLY_DYNAMIC_PAGE_TABLES,8,0
+SYM_DATA_START_PAGE_ALIGNED(early_dynamic_pgts) /* 4k对齐，共64页 */
+	.fill	512*EARLY_DYNAMIC_PAGE_TABLES,8,0 /* EARLY_DYNAMIC_PAGE_TABLES=64 */
 SYM_DATA_END(early_dynamic_pgts)
 
 SYM_DATA(early_recursion_flag, .long 0)
@@ -484,12 +484,12 @@ SYM_DATA(early_recursion_flag, .long 0)
 
 #if defined(CONFIG_XEN_PV) || defined(CONFIG_PVH)
 SYM_DATA_START_PTI_ALIGNED(init_top_pgt)
-	.quad   level3_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC
+	.quad   level3_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC /* 第0项 */
 	.org    init_top_pgt + L4_PAGE_OFFSET*8, 0
-	.quad   level3_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC
+	.quad   level3_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC /* 第273项，映射到内核态地址空间开始处0xffff888000000000 */
 	.org    init_top_pgt + L4_START_KERNEL*8, 0
 	/* (2^48-(2*1024*1024*1024))/(2^39) = 511 */
-	.quad   level3_kernel_pgt - __START_KERNEL_map + _PAGE_TABLE_NOENC
+	.quad   level3_kernel_pgt - __START_KERNEL_map + _PAGE_TABLE_NOENC /* 第511项，映射到0xffffffff80000000处 */
 	.fill	PTI_USER_PGD_FILL,8,0
 SYM_DATA_END(init_top_pgt)
 
@@ -497,7 +497,7 @@ SYM_DATA_START_PAGE_ALIGNED(level3_ident_pgt)
 	.quad	level2_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC
 	.fill	511, 8, 0
 SYM_DATA_END(level3_ident_pgt)
-SYM_DATA_START_PAGE_ALIGNED(level2_ident_pgt)
+SYM_DATA_START_PAGE_ALIGNED(level2_ident_pgt) /* init_top_pgt的第0项和273项都映射到物理地址的首1G */
 	/*
 	 * Since I easily can, map the first 1G.
 	 * Don't set NX because code runs from these pages.
@@ -506,7 +506,7 @@ SYM_DATA_START_PAGE_ALIGNED(level2_ident_pgt)
 	 * the CPU supports it or it is enabled.  But,
 	 * the CPU should ignore the bit.
 	 */
-	PMDS(0, __PAGE_KERNEL_IDENT_LARGE_EXEC, PTRS_PER_PMD)
+	PMDS(0, __PAGE_KERNEL_IDENT_LARGE_EXEC, PTRS_PER_PMD) /* PTRS_PER_PMD=512 */
 SYM_DATA_END(level2_ident_pgt)
 #else
 SYM_DATA_START_PTI_ALIGNED(init_top_pgt)

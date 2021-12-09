@@ -72,7 +72,7 @@ void __init reserve_bios_regions(void)
 	 * firmware area starts:
 	 */
 	bios_start = *(unsigned short *)__va(BIOS_RAM_SIZE_KB_PTR);
-	bios_start <<= 10;
+	bios_start <<= 10; // Qemu debug: bios_start=639k
 
 	/*
 	 * If bios_start is less than 128K, assume it is bogus
@@ -80,10 +80,10 @@ void __init reserve_bios_regions(void)
 	 * don't trust it.
 	 */
 	if (bios_start < BIOS_START_MIN || bios_start > BIOS_START_MAX)
-		bios_start = BIOS_START_MAX;
+		bios_start = BIOS_START_MAX; // bios_start在这里被赋值为了636k
 
 	/* Get the start address of the EBDA page: */
-	ebda_start = get_bios_ebda();
+	ebda_start = get_bios_ebda(); // Qemu debug: ebda_start=639k
 
 	/*
 	 * If the EBDA start address is sane and is below the BIOS region,
@@ -94,5 +94,5 @@ void __init reserve_bios_regions(void)
 		bios_start = ebda_start;
 
 	/* Reserve all memory between bios_start and the 1MB mark: */
-	memblock_reserve(bios_start, 0x100000 - bios_start);
+	memblock_reserve(bios_start, 0x100000 - bios_start); // Qemu debug: 636k ~ 636k+388k(1M)
 }

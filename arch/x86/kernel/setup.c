@@ -218,8 +218,8 @@ static void __init cleanup_highmap(void)
 static void __init reserve_brk(void)
 {
 	if (_brk_end > _brk_start)
-		memblock_reserve(__pa_symbol(_brk_start),
-				 _brk_end - _brk_start);
+		memblock_reserve(__pa_symbol(_brk_start), // base=0x2C00000
+				 _brk_end - _brk_start);  // size=0xd000，52k
 
 	/* Mark brk area as locked down and no longer taking any
 	   new allocations */
@@ -638,7 +638,7 @@ static void __init trim_snb_memory(void)
 	 * already been reserved.
 	 */
 	memblock_reserve(0, 1<<20);
-	
+
 	for (i = 0; i < ARRAY_SIZE(bad_pages); i++) {
 		if (memblock_reserve(bad_pages[i], PAGE_SIZE))
 			printk(KERN_WARNING "failed to reserve 0x%08lx\n",
@@ -730,7 +730,7 @@ static void __init trim_low_memory_range(void)
 {
 	memblock_reserve(0, ALIGN(reserve_low, PAGE_SIZE));
 }
-	
+
 /*
  * Dump out kernel offset information on panic.
  */
@@ -772,15 +772,15 @@ void __init setup_arch(char **cmdline_p)
 	 * separate memblock_reserve() or they will be discarded.
 	 */
 	memblock_reserve(__pa_symbol(_text),
-			 (unsigned long)__end_of_kernel_reserve - (unsigned long)_text);
+			 (unsigned long)__end_of_kernel_reserve - (unsigned long)_text); // 16M ~ 0x2C00000(16+29M), memblock.reserved.region[0]
 
 	/*
 	 * Make sure page 0 is always reserved because on systems with
 	 * L1TF its contents can be leaked to user processes.
 	 */
-	memblock_reserve(0, PAGE_SIZE);
+	memblock_reserve(0, PAGE_SIZE); // 0 ~ 4096, memblock.reserved.region[1]
 
-	early_reserve_initrd();
+	early_reserve_initrd(); // initrd位置：0x7E0E000 ~ 0x7FE0000[page对齐]（大小0x1D1AC3）, memblock.reserved.region[2]
 
 	/*
 	 * At this point everything still needed from the boot loader
@@ -811,7 +811,7 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	__flush_tlb_all();
 #else
-	printk(KERN_INFO "Command line: %s\n", boot_command_line);
+	printk(KERN_INFO "Command line: %s\n", boot_command_line); // 打印启动命令行参数
 	boot_cpu_data.x86_phys_bits = MAX_PHYSMEM_BITS;
 #endif
 
@@ -863,7 +863,7 @@ void __init setup_arch(char **cmdline_p)
 	x86_init.oem.arch_setup();
 
 	iomem_resource.end = (1ULL << boot_cpu_data.x86_phys_bits) - 1;
-	e820__memory_setup();
+	e820__memory_setup(); // 准备e820_table entries信息，打印BIOS-provided physical RAM map: xxx
 	parse_setup_data();
 
 	copy_edd();
@@ -909,7 +909,7 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	x86_configure_nx();
 
-	parse_early_param();
+	parse_early_param(); // 根据命令行参数调用各自通过early_param宏定义注册的初始化函数，好比：earlyprintk=ttyS0 memblock=debug等
 
 	if (efi_enabled(EFI_BOOT))
 		efi_memblock_x86_reserve_range();
@@ -972,7 +972,7 @@ void __init setup_arch(char **cmdline_p)
 	insert_resource(&iomem_resource, &data_resource);
 	insert_resource(&iomem_resource, &bss_resource);
 
-	e820_add_kernel_range();
+	e820_add_kernel_range(); // e820已经reserve了内核部分，这个函数调用不做任何事情
 	trim_bios_range();
 #ifdef CONFIG_X86_32
 	if (ppro_with_ram_bug()) {
@@ -990,14 +990,14 @@ void __init setup_arch(char **cmdline_p)
 	 * partially used pages are not usable - thus
 	 * we are rounding upwards:
 	 */
-	max_pfn = e820__end_of_ram_pfn();
+	max_pfn = e820__end_of_ram_pfn(); // 32736，对应128M内存的最后一个页索引号，打印：last_pfn = 0x7fe0 max_arch_pfn = 0x400000000
 
 	/* update e820 for memory not covered by WB MTRRs */
 	mtrr_bp_init();
 	if (mtrr_trim_uncached_memory(max_pfn))
 		max_pfn = e820__end_of_ram_pfn();
 
-	max_possible_pfn = max_pfn;
+	max_possible_pfn = max_pfn; // max_possible_pfn还是32736
 
 	/*
 	 * This call is required when the CPU does not support PAT. If
@@ -1023,9 +1023,9 @@ void __init setup_arch(char **cmdline_p)
 	if (max_pfn > (1UL<<(32 - PAGE_SHIFT)))
 		max_low_pfn = e820__end_of_low_ram_pfn();
 	else
-		max_low_pfn = max_pfn;
+		max_low_pfn = max_pfn; // max_low_pfn在后面的x86_init.paging.pagetable_init()->zone_sizes_init()中会用到，来计算ZONE_DMA32区域的大小
 
-	high_memory = (void *)__va(max_pfn * PAGE_SIZE - 1) + 1;
+	high_memory = (void *)__va(max_pfn * PAGE_SIZE - 1) + 1; // PAGE_OFFSET(0xffff888000000000) + 128M = 0xffff888007fe0000
 #endif
 
 	/*
@@ -1033,6 +1033,11 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	find_smp_config();
 
+        /*
+         * 打印：
+         * [    0.069249] memblock_reserve: [0x00000000000f5ca0-0x00000000000f5caf] smp_scan_config+0xc5/0x10c
+         * [    0.084474] memblock_reserve: [0x00000000000f5cb0-0x00000000000f5d7f] smp_scan_config+0xe7/0x10c
+         */
 	reserve_ibft_region();
 
 	early_alloc_pgt_buf();
@@ -1042,23 +1047,23 @@ void __init setup_arch(char **cmdline_p)
 	 *  it could use memblock_find_in_range, could overlap with
 	 *  brk area.
 	 */
-	reserve_brk();
+	reserve_brk(); // 共52k，打印：memblock_reserve: [0x0000000002c00000-0x0000000002c0cfff] setup_arch+0x4d3/0xc2c, memblock.reserved.region[3]
 
 	cleanup_highmap();
 
-	memblock_set_current_limit(ISA_END_ADDRESS);
-	e820__memblock_setup();
+	memblock_set_current_limit(ISA_END_ADDRESS); // 0x100000(1M)
+	e820__memblock_setup(); /* 根据e820_table的entry项，将当前机器可用的物理内存作为memory regions加入到memblock中。在此之前reserved数组已经有4个regions了，memory数组目前是空的。Qemu debug: 填充了memblock.memory.region[0](4096(4k)-651264(636k))和memblock.memory.region[1](1048576(1M)-134086656(127M+896k))。此时reserved regions内容为：0-4096(4k) 1006752(983k+160)-1006976(983k+384) 16777216(16M)-46190592(44M+52k) 132177920(126M+56k)-134086656(127M+896k)，可以看出memblock.memory[1]中有2段已经reserve掉了。 */
 
 	/*
 	 * Needs to run after memblock setup because it needs the physical
 	 * memory size.
 	 */
-	sev_setup_arch();
+	sev_setup_arch(); // 空方法，编译优化直接去掉
 
-	reserve_bios_regions();
+	reserve_bios_regions(); // Qemu debug: 将BIOS占据的636k ~ 1M地址空间也memblock reserve掉，扩展了reserved.region[1]1006752(983k+160)-1006976(983k+384) -> 651264(636k)-1048576(1M)
 
-	efi_fake_memmap();
-	efi_find_mirror();
+	efi_fake_memmap(); // 空方法
+	efi_find_mirror(); // 没有开启efi，通通skip
 	efi_esrt_init();
 	efi_mokvar_table_init();
 
@@ -1069,10 +1074,10 @@ void __init setup_arch(char **cmdline_p)
 	efi_reserve_boot_services();
 
 	/* preallocate 4k for mptable mpc */
-	e820__memblock_alloc_reserved_mpc_new();
+	e820__memblock_alloc_reserved_mpc_new(); // Qemu debug：也skip
 
 #ifdef CONFIG_X86_CHECK_BIOS_CORRUPTION
-	setup_bios_corruption_check();
+	setup_bios_corruption_check(); // Qemu debug: 这里也会memblock_reserve
 #endif
 
 #ifdef CONFIG_X86_32
@@ -1100,7 +1105,7 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	mmu_cr4_features = __read_cr4() & ~X86_CR4_PCIDE;
 
-	memblock_set_current_limit(get_max_mapped());
+	memblock_set_current_limit(get_max_mapped()); // 127.875M
 
 	/*
 	 * NOTE: On x86-32, only from this point on, fixmaps are ready for use.
@@ -1138,7 +1143,7 @@ void __init setup_arch(char **cmdline_p)
 	early_platform_quirks();
 
 	/*
-	 * Parse the ACPI tables for possible boot-time SMP configuration.
+	 * Parse the ACPI tables for possible boot-time SMP configuration. 高级配置和电源管理接口
 	 */
 	acpi_boot_table_init();
 
@@ -1156,12 +1161,12 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	reserve_crashkernel();
 
-	memblock_find_dma_reserve();
+	memblock_find_dma_reserve(); // 132161536(126M+40k) - 132177920(126M+56k), memblock.reserved.region[3]，原来的3被挤到4了
 
 	if (!early_xdbc_setup_hardware())
 		early_xdbc_register_console();
 
-	x86_init.paging.pagetable_init();
+	x86_init.paging.pagetable_init(); // mem_section*[root]和pgdata、zone初始化，这些都是属于管理物理内存的初始化（以页为单位管理），在setup_arch()中就没有其它关于内存管理方面的逻辑了，后面的buddy内存管理系统要到main()->mm_init()中去建立了。这里边会大量使用memblock来动态分配内核数据结构空间，Qemu debug至此reserved已经有8个regions了，已分配的空间有32M+40k了。
 
 	kasan_init();
 

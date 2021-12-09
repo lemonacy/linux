@@ -20,7 +20,7 @@ pgd_t trampoline_pgd_entry;
 void __init reserve_real_mode(void)
 {
 	phys_addr_t mem;
-	size_t size = real_mode_size_needed();
+	size_t size = real_mode_size_needed(); // 24576(24k)
 
 	if (!size)
 		return;
@@ -28,7 +28,7 @@ void __init reserve_real_mode(void)
 	WARN_ON(slab_is_available());
 
 	/* Has to be under 1M so we can execute real-mode AP code. */
-	mem = memblock_find_in_range(0, 1<<20, size, PAGE_SIZE);
+	mem = memblock_find_in_range(0, 1<<20, size, PAGE_SIZE); // 查找在1M内存下是否有24k的可用内存空间，Qemu debug已经找到，位置612k开始的24k可以用
 	if (!mem) {
 		pr_info("No sub-1M memory is available for the trampoline\n");
 		return;

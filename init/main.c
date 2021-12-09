@@ -726,7 +726,7 @@ static int __init do_early_param(char *param, char *val,
 {
 	const struct obs_kernel_param *p;
 
-	for (p = __setup_start; p < __setup_end; p++) {
+	for (p = __setup_start; p < __setup_end; p++) { // 依次递归由early_param宏注册的早期命令行参数处理函数，好比：early_param("memblock", early_memblock);
 		if ((p->early && parameq(param, p->str)) ||
 		    (strcmp(param, "console") == 0 &&
 		     strcmp(p->str, "earlycon") == 0)
@@ -868,7 +868,7 @@ asmlinkage __visible void __init __no_sanitize_address __attribute__((optimize("
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	early_security_init();
-	setup_arch(&command_line);
+	setup_arch(&command_line); /* 设置特定架构的信息，同时初始化memblock。setup_arch后，memblock.reserved的内存有18个region，共占32M+389K+300。 */
 	setup_boot_config(command_line);
 	setup_command_line(command_line);
 	setup_nr_cpu_ids();
@@ -876,7 +876,7 @@ asmlinkage __visible void __init __no_sanitize_address __attribute__((optimize("
 	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
 	boot_cpu_hotplug_init();
 
-	build_all_zonelists(NULL);
+	build_all_zonelists(NULL); /* 初始化内存结点和内段区域 */
 	page_alloc_init();
 
 	pr_notice("Kernel command line: %s\n", saved_command_line);
@@ -902,7 +902,7 @@ asmlinkage __visible void __init __no_sanitize_address __attribute__((optimize("
 	vfs_caches_init_early();
 	sort_main_extable();
 	trap_init();
-	mm_init();
+	mm_init(); // 至此之前内存都是通过memblock来分配的，截止目前memblock.reserved使用了29个region，共占用了32M+146K的内存，后面的内存分配应该就走buddy系统了，不再使用memblock。memblock等位于.init.data或者.init.text段的内存将在free_initmem()中回收加入到buddy系统中去使用。(注：mem_section并不是.init段中的内容，系统正常运行也需要用到，所以永远不会被回收)
 
 	ftrace_init();
 
@@ -1417,7 +1417,7 @@ static int __ref kernel_init(void *unused)
 	async_synchronize_full();
 	kprobe_free_init_mem();
 	ftrace_free_init_mem();
-	free_initmem();
+	free_initmem(); // 释放init段占用的内存，全部使用0xcccccccccccccccc填充
 	mark_readonly();
 
 	/*

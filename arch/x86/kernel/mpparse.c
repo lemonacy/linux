@@ -581,9 +581,9 @@ static int __init smp_scan_config(unsigned long base, unsigned long length)
 			pr_info("found SMP MP-table at [mem %#010lx-%#010lx]\n",
 				base, base + sizeof(*mpf) - 1);
 
-			memblock_reserve(base, sizeof(*mpf));
+			memblock_reserve(base, sizeof(*mpf)); // 打印：memblock_reserve: [0x00000000000f5ca0-0x00000000000f5caf] smp_scan_config+0xc5/0x10c
 			if (mpf->physptr)
-				smp_reserve_memory(mpf);
+				smp_reserve_memory(mpf); // 打印：memblock_reserve: [0x00000000000f5cb0-0x00000000000f5d7f] smp_scan_config+0xe7/0x10c
 
 			ret = 1;
 		}

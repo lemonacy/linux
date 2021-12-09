@@ -548,8 +548,8 @@ static void __init_memblock memblock_merge_regions(struct memblock_type *type)
 
 		this->size += next->size;
 		/* move forward from next + 1, index of which is i + 2 */
-		memmove(next, next + 1, (type->cnt - (i + 2)) * sizeof(*next));
-		type->cnt--;
+		memmove(next, next + 1, (type->cnt - (i + 2)) * sizeof(*next)); // 合并memblock regions数组中的this和next元素，然后将next+1的size个字节一定到next处，即删除数组元素后，后面的元素往前移
+		type->cnt--; // 数组元素减一
 	}
 }
 
@@ -613,7 +613,7 @@ static int __init_memblock memblock_add_range(struct memblock_type *type,
 		return 0;
 
 	/* special case for empty array */
-	if (type->regions[0].size == 0) {
+	if (type->regions[0].size == 0) { // 全局变量memblock静态初始化的时候，会默认定义又一个dummy的region（cnt=1），如果这个region的size=0则说明第一个region还没有被用过，可以使用
 		WARN_ON(type->cnt != 1 || type->total_size);
 		type->regions[0].base = base;
 		type->regions[0].size = size;
@@ -680,7 +680,7 @@ repeat:
 		insert = true;
 		goto repeat;
 	} else {
-		memblock_merge_regions(type);
+		memblock_merge_regions(type); // 合并region数组中相邻的同类型元素，将后面的元素前移
 		return 0;
 	}
 }
@@ -1844,7 +1844,7 @@ void __init_memblock memblock_trim_memory(phys_addr_t align)
 		orig_start = r->base;
 		orig_end = r->base + r->size;
 		start = round_up(orig_start, align);
-		end = round_down(orig_end, align);
+		end = round_down(orig_end, align); // 从654336(639k)往下取整页到651264(636k)
 
 		if (start == orig_start && end == orig_end)
 			continue;
@@ -2056,7 +2056,7 @@ static unsigned long __init free_low_memory_core_early(void)
 	 *  low ram will be on Node1
 	 */
 	for_each_free_mem_range(i, NUMA_NO_NODE, MEMBLOCK_NONE, &start, &end,
-				NULL)
+				NULL) // for_each_free_mem_range宏循环memblock.memory区域，并exclude memblock.reserved区域，具体查看for_each_free_mem_range->__for_each_mem_range->__next_mem_range宏定义，其实就是两层for循环来不断更新start和end的值
 		count += __free_memory_core(start, end);
 
 	return count;
@@ -2097,8 +2097,8 @@ unsigned long __init memblock_free_all(void)
 	free_unused_memmap();
 	reset_all_zones_managed_pages();
 
-	pages = free_low_memory_core_early();
-	totalram_pages_add(pages);
+	pages = free_low_memory_core_early(); // _totalram_pages=0,pages=24342
+	totalram_pages_add(pages); // _totalram_pages=24342(大约95.0859375M)，加上此时memblock.reserved的32.786272M，刚好127.8722M，和物理内存128M刚好对的上。
 
 	return pages;
 }

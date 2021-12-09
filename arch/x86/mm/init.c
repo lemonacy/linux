@@ -995,17 +995,17 @@ void __init zone_sizes_init(void)
 	memset(max_zone_pfns, 0, sizeof(max_zone_pfns));
 
 #ifdef CONFIG_ZONE_DMA
-	max_zone_pfns[ZONE_DMA]		= min(MAX_DMA_PFN, max_low_pfn);
+	max_zone_pfns[ZONE_DMA]		= min(MAX_DMA_PFN, max_low_pfn); // 4096，MAX_DMA_PFN对应16M
 #endif
 #ifdef CONFIG_ZONE_DMA32
-	max_zone_pfns[ZONE_DMA32]	= min(MAX_DMA32_PFN, max_low_pfn);
+	max_zone_pfns[ZONE_DMA32]	= min(MAX_DMA32_PFN, max_low_pfn); // 32736（对应128M内存的大小），MAX_DMA32_PFN对应4G，max_low_pfn在setup_arch中被赋值为物理内存的最大pfn
 #endif
-	max_zone_pfns[ZONE_NORMAL]	= max_low_pfn;
+	max_zone_pfns[ZONE_NORMAL]	= max_low_pfn; // 32736，由于物理内存小于4G，所以物理内存只够ZONE_DMA和ZONE_DMA32分配的，ZONE_NORMAL区域实际大小为零
 #ifdef CONFIG_HIGHMEM
 	max_zone_pfns[ZONE_HIGHMEM]	= max_pfn;
 #endif
 
-	free_area_init(max_zone_pfns);
+	free_area_init(max_zone_pfns); // 初始化pgdata和zone
 }
 
 __visible DEFINE_PER_CPU_SHARED_ALIGNED(struct tlb_state, cpu_tlbstate) = {

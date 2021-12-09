@@ -502,7 +502,7 @@ start_thread_common(struct pt_regs *regs, unsigned long new_ip,
 	regs->flags		= X86_EFLAGS_IF;
 }
 
-void
+void __attribute__((optimize("O0")))
 start_thread(struct pt_regs *regs, unsigned long new_ip, unsigned long new_sp)
 {
 	start_thread_common(regs, new_ip, new_sp,

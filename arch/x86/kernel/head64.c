@@ -44,7 +44,7 @@
 /*
  * Manage page tables very early on.
  */
-extern pmd_t early_dynamic_pgts[EARLY_DYNAMIC_PAGE_TABLES][PTRS_PER_PMD];
+extern pmd_t early_dynamic_pgts[EARLY_DYNAMIC_PAGE_TABLES][PTRS_PER_PMD]; /* early_dynamic_pgts[64][512] */
 static unsigned int __initdata next_early_pgt;
 pmdval_t early_pmd_flags = __PAGE_KERNEL_LARGE & ~(_PAGE_GLOBAL | _PAGE_NX);
 
@@ -57,11 +57,11 @@ EXPORT_SYMBOL(ptrs_per_p4d);
 #endif
 
 #ifdef CONFIG_DYNAMIC_MEMORY_LAYOUT
-unsigned long page_offset_base __ro_after_init = __PAGE_OFFSET_BASE_L4;
+unsigned long page_offset_base __ro_after_init = __PAGE_OFFSET_BASE_L4; /* 0xffff888000000000UL */
 EXPORT_SYMBOL(page_offset_base);
-unsigned long vmalloc_base __ro_after_init = __VMALLOC_BASE_L4;
+unsigned long vmalloc_base __ro_after_init = __VMALLOC_BASE_L4; /* 0xffffc90000000000UL */
 EXPORT_SYMBOL(vmalloc_base);
-unsigned long vmemmap_base __ro_after_init = __VMEMMAP_BASE_L4;
+unsigned long vmemmap_base __ro_after_init = __VMEMMAP_BASE_L4; /* 0xffffea0000000000UL */
 EXPORT_SYMBOL(vmemmap_base);
 #endif
 
@@ -113,9 +113,9 @@ static bool __head check_la57_support(unsigned long physaddr)
 	*fixup_int(&__pgtable_l5_enabled, physaddr) = 1;
 	*fixup_int(&pgdir_shift, physaddr) = 48;
 	*fixup_int(&ptrs_per_p4d, physaddr) = 512;
-	*fixup_long(&page_offset_base, physaddr) = __PAGE_OFFSET_BASE_L5;
-	*fixup_long(&vmalloc_base, physaddr) = __VMALLOC_BASE_L5;
-	*fixup_long(&vmemmap_base, physaddr) = __VMEMMAP_BASE_L5;
+	*fixup_long(&page_offset_base, physaddr) = __PAGE_OFFSET_BASE_L5; /* 0xff11000000000000UL */
+	*fixup_long(&vmalloc_base, physaddr) = __VMALLOC_BASE_L5; /* 0xffa0000000000000UL */
+	*fixup_long(&vmemmap_base, physaddr) = __VMEMMAP_BASE_L5; /* 0xffd4000000000000UL */
 
 	return true;
 }

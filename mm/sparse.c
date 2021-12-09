@@ -63,7 +63,7 @@ static noinline struct mem_section __ref *sparse_index_alloc(int nid)
 {
 	struct mem_section *section = NULL;
 	unsigned long array_size = SECTIONS_PER_ROOT *
-				   sizeof(struct mem_section);
+				   sizeof(struct mem_section); // sizeof(struct mem_section)=16, SECTIONS_PER_ROOT=256, array_size=4096
 
 	if (slab_is_available()) {
 		section = kzalloc_node(array_size, GFP_KERNEL, nid);
@@ -97,7 +97,7 @@ static int __meminit sparse_index_init(unsigned long section_nr, int nid)
 	if (!section)
 		return -ENOMEM;
 
-	mem_section[root] = section;
+	mem_section[root] = section; // mem_section是一个2048个元素的指针数组，元素指针指向一个256个元素的mem_section数组，每个mem_section占16字节
 
 	return 0;
 }
@@ -219,7 +219,7 @@ static void subsection_mask_set(unsigned long *map, unsigned long pfn,
 
 void __init subsection_map_init(unsigned long pfn, unsigned long nr_pages)
 {
-	int end_sec = pfn_to_section_nr(pfn + nr_pages - 1);
+	int end_sec = pfn_to_section_nr(pfn + nr_pages - 1); // pfn >> PFN_SECTION_SHIFT
 	unsigned long nr, start_sec = pfn_to_section_nr(pfn);
 
 	if (!nr_pages)
@@ -232,7 +232,7 @@ void __init subsection_map_init(unsigned long pfn, unsigned long nr_pages)
 		pfns = min(nr_pages, PAGES_PER_SECTION
 				- (pfn & ~PAGE_SECTION_MASK));
 		ms = __nr_to_section(nr);
-		subsection_mask_set(ms->usage->subsection_map, pfn, pfns);
+		subsection_mask_set(ms->usage->subsection_map, pfn, pfns); // mem_section->usage->subsection_map是一个位图，用来标识该section中page的使用情况
 
 		pr_debug("%s: sec: %lu pfns: %lu set(%d, %d)\n", __func__, nr,
 				pfns, subsection_map_index(pfn),
@@ -257,18 +257,18 @@ static void __init memory_present(int nid, unsigned long start, unsigned long en
 	if (unlikely(!mem_section)) {
 		unsigned long size, align;
 
-		size = sizeof(struct mem_section*) * NR_SECTION_ROOTS;
-		align = 1 << (INTERNODE_CACHE_SHIFT);
-		mem_section = memblock_alloc(size, align);
+		size = sizeof(struct mem_section*) * NR_SECTION_ROOTS; // sizeof(struct mem_section*) = 8(指针大小为8个字节)，NR_SECTION_ROOTS=2048，size=16384(16k)
+		align = 1 << (INTERNODE_CACHE_SHIFT); // align = 64
+		mem_section = memblock_alloc(size, align); // 为2048个root sections分配了16k的内存
 		if (!mem_section)
 			panic("%s: Failed to allocate %lu bytes align=0x%lx\n",
 			      __func__, size, align);
 	}
 #endif
 
-	start &= PAGE_SECTION_MASK;
+	start &= PAGE_SECTION_MASK; // PAGE_SECTION_MASK=0x0111111111111111(低15位为1)，PAGES_PER_SECTION=32768即每个section最多可存放32768个page，一个page 4k，即一个section最大可表示128M物理内存
 	mminit_validate_memmodel_limits(&start, &end);
-	for (pfn = start; pfn < end; pfn += PAGES_PER_SECTION) {
+	for (pfn = start; pfn < end; pfn += PAGES_PER_SECTION) { // 根据start~end计算需要多少个section来表示memblock.memory中的一个region表示的物理内存，注意此时只是为section分配了内存，但还没有把page与section映射起来
 		unsigned long section = pfn_to_section_nr(pfn);
 		struct mem_section *ms;
 
@@ -289,12 +289,12 @@ static void __init memory_present(int nid, unsigned long start, unsigned long en
  * This is a convenience function that is useful to mark all of the systems
  * memory as present during initialization.
  */
-static void __init memblocks_present(void)
+static void __attribute__((optimize("O0"))) __init memblocks_present(void)
 {
 	unsigned long start, end;
 	int i, nid;
 
-	for_each_mem_pfn_range(i, MAX_NUMNODES, &start, &end, &nid)
+	for_each_mem_pfn_range(i, MAX_NUMNODES, &start, &end, &nid) // MAX_NUMNODES=64，for_each_mem_pfn_range遍历memblock.memory下的regions，然后根据region的base和size，算出区间映射到的start fpn和end fpn（两端页不对齐的部分均舍掉）
 		memory_present(nid, start, end);
 }
 
@@ -520,9 +520,9 @@ void __weak __meminit vmemmap_populate_print_last(void)
  * Initialize sparse on a specific node. The node spans [pnum_begin, pnum_end)
  * And number of present sections in this node is map_count.
  */
-static void __init sparse_init_nid(int nid, unsigned long pnum_begin,
-				   unsigned long pnum_end,
-				   unsigned long map_count)
+static void __init sparse_init_nid(int nid, unsigned long pnum_begin, // pnum_begin=0, section_nr开始
+				   unsigned long pnum_end, // pnum_end=0xffffffffffffffff，section_nr结束，为什么这么大？
+				   unsigned long map_count) // map_count表示该node上的物理内存需要多少个section
 {
 	struct mem_section_usage *usage;
 	unsigned long pnum;
@@ -534,9 +534,9 @@ static void __init sparse_init_nid(int nid, unsigned long pnum_begin,
 		pr_err("%s: node[%d] usemap allocation failed", __func__, nid);
 		goto failed;
 	}
-	sparse_buffer_init(map_count * section_map_size(), nid);
+	sparse_buffer_init(map_count * section_map_size(), nid); // size(struct page)=64,PAGES_PER_SECTION=32768,section_map_size()=2097152(2M),map_count=1. 为node对应的sections动态分配struct page数组。这里分配好内存后，下面的__populate_section_memmap()就优先从这个buffer中分配内存，不够的话再调用vmemmap_alloc_block()分配内存。
 	for_each_present_section_nr(pnum_begin, pnum) {
-		unsigned long pfn = section_nr_to_pfn(pnum);
+		unsigned long pfn = section_nr_to_pfn(pnum); // 由section_nr计算pfn，由于section编号和物理内存的地址空间是一一对应的，所以可以根据序号计算内存页的序号。其实也就是简单的section_nr << 15获取pfn，因为一个section可以记录1<<15个page.
 
 		if (pnum >= pnum_end)
 			break;
@@ -551,10 +551,10 @@ static void __init sparse_init_nid(int nid, unsigned long pnum_begin,
 		}
 		check_usemap_section_nr(nid, usage);
 		sparse_init_one_section(__nr_to_section(pnum), pnum, map, usage,
-				SECTION_IS_EARLY);
+				SECTION_IS_EARLY); // 用初始化好的page数组虚拟地址和usage填充mem_section
 		usage = (void *) usage + mem_section_usage_size();
 	}
-	sparse_buffer_fini();
+	sparse_buffer_fini(); // 释放sparse_buffer多余的空间
 	return;
 failed:
 	/* We failed to allocate, mark all the following pnums as not present */
@@ -572,7 +572,7 @@ failed:
  * Allocate the accumulated non-linear sections, allocate a mem_map
  * for each and record the physical to section mapping.
  */
-void __init sparse_init(void)
+void __init __attribute__((optimize("O0"))) sparse_init(void)
 {
 	unsigned long pnum_end, pnum_begin, map_count = 1;
 	int nid_begin;
@@ -599,7 +599,7 @@ void __init sparse_init(void)
 		map_count = 1;
 	}
 	/* cover the last node */
-	sparse_init_nid(nid_begin, pnum_begin, pnum_end, map_count);
+	sparse_init_nid(nid_begin, pnum_begin, pnum_end, map_count); // pnum_begin=0（开始section_nr）,pnum_end=0xffffffffffffffff（结束section_nr）,map_count=1（section个数）
 	vmemmap_populate_print_last();
 }
 

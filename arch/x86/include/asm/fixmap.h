@@ -56,7 +56,7 @@ extern unsigned long __FIXADDR_TOP;
 #define FIXADDR_TOP	((unsigned long)__FIXADDR_TOP)
 #else
 #define FIXADDR_TOP	(round_up(VSYSCALL_ADDR + PAGE_SIZE, 1<<PMD_SHIFT) - \
-			 PAGE_SIZE)
+			 PAGE_SIZE) /*VSYSCALL_ADDR=0xffffffffff600000*/
 #endif
 
 /*
@@ -78,7 +78,7 @@ extern unsigned long __FIXADDR_TOP;
  * TLB entries of such buffers will not be flushed across
  * task switches.
  */
-enum fixed_addresses {
+enum fixed_addresses { /* 这个枚举定义的是高地址到低地址固定虚拟地址索引，FIX_HOLE为0的地址最高，__end_of_fixed_addresses地址最低，搞懂这个顺序就好理解了。 */
 #ifdef CONFIG_X86_32
 	FIX_HOLE,
 #else

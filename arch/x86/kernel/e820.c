@@ -1288,7 +1288,7 @@ void __init e820__memory_setup(void)
 	memcpy(e820_table_kexec, e820_table, sizeof(*e820_table_kexec));
 	memcpy(e820_table_firmware, e820_table, sizeof(*e820_table_firmware));
 
-	pr_info("BIOS-provided physical RAM map:\n");
+	pr_info("BIOS-provided physical RAM map:\n"); // 原来e820的信息是在这里打印的
 	e820__print_table(who);
 }
 
@@ -1306,7 +1306,7 @@ void __init e820__memblock_setup(void)
 	 * so we know about reserved memory regions already. (This is important
 	 * so that memblock resizing does no stomp over reserved areas.)
 	 */
-	memblock_allow_resize();
+	memblock_allow_resize(); /* debug验证了此时memory和reserved两个类型的大小还都为128，即没有动态调整 */
 
 	for (i = 0; i < e820_table->nr_entries; i++) {
 		struct e820_entry *entry = &e820_table->entries[i];
@@ -1316,16 +1316,16 @@ void __init e820__memblock_setup(void)
 			continue;
 
 		if (entry->type == E820_TYPE_SOFT_RESERVED)
-			memblock_reserve(entry->addr, entry->size);
+			memblock_reserve(entry->addr, entry->size); // 将soft reserved区间加入到memblock.reserved数组，在Qemu debug下有0个区间
 
 		if (entry->type != E820_TYPE_RAM && entry->type != E820_TYPE_RESERVED_KERN)
 			continue;
 
-		memblock_add(entry->addr, entry->size);
+		memblock_add(entry->addr, entry->size); // 将usable区间加入到memblock.memory数组，在Qemu debug下只有2个区间，分布为4k~4k+635k和1M~1M+126.875M
 	}
 
 	/* Throw away partial pages: */
-	memblock_trim_memory(PAGE_SIZE);
+	memblock_trim_memory(PAGE_SIZE); // Qemu debug PAGE_SIZE=4k，第一段的end是需要调整的，其它的不需要调整
 
-	memblock_dump_all();
+	memblock_dump_all(); // 将整理的信息做dump输出，需要加memblock=debug命令行参数才会打印
 }

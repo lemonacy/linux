@@ -812,7 +812,7 @@ void __init initmem_init(void)
 
 void __init paging_init(void)
 {
-	sparse_init();
+	sparse_init(); // 初始化了mem_section*[root] -> mem_section[].section_mem_map -> (虚拟vmemmap[]) -> pages[]，但没有初始化page的内容
 
 	/*
 	 * clear the default setting with node 0
@@ -823,7 +823,7 @@ void __init paging_init(void)
 	node_clear_state(0, N_MEMORY);
 	node_clear_state(0, N_NORMAL_MEMORY);
 
-	zone_sizes_init();
+	zone_sizes_init(); // 对各个zone区域以及buddy算法进行初始化
 }
 
 /*
@@ -1500,29 +1500,29 @@ static int __meminit vmemmap_populate_hugepages(unsigned long start,
 	pmd_t *pmd;
 
 	for (addr = start; addr < end; addr = next) {
-		next = pmd_addr_end(addr, end);
+		next = pmd_addr_end(addr, end); // next=0xffffea0000200000
 
-		pgd = vmemmap_pgd_populate(addr, node);
+		pgd = vmemmap_pgd_populate(addr, node); // pgd=0xffffffff8240cea0 <init_top_pgt+3744>
 		if (!pgd)
 			return -ENOMEM;
 
-		p4d = vmemmap_p4d_populate(pgd, addr, node);
+		p4d = vmemmap_p4d_populate(pgd, addr, node); // p4d=0xffffffff8240cea0 <init_top_pgt+3744>
 		if (!p4d)
 			return -ENOMEM;
 
-		pud = vmemmap_pud_populate(p4d, addr, node);
+		pud = vmemmap_pud_populate(p4d, addr, node); // pud=0xffff888007e03000
 		if (!pud)
 			return -ENOMEM;
 
-		pmd = pmd_offset(pud, addr);
+		pmd = pmd_offset(pud, addr); // pmd=0xffff888007e02000
 		if (pmd_none(*pmd)) {
 			void *p;
 
-			p = vmemmap_alloc_block_buf(PMD_SIZE, node, altmap);
+			p = vmemmap_alloc_block_buf(PMD_SIZE, node, altmap); // PMD_SIZE=2M(大页)
 			if (p) {
 				pte_t entry;
 
-				entry = pfn_pte(__pa(p) >> PAGE_SHIFT,
+				entry = pfn_pte(__pa(p) >> PAGE_SHIFT, // 计算p=0xffff888007c00000的物理地址，然后填充页表项（大页）
 						PAGE_KERNEL_LARGE);
 				set_pmd(pmd, __pmd(pte_val(entry)));
 
@@ -1559,7 +1559,7 @@ int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 	if (end - start < PAGES_PER_SECTION * sizeof(struct page))
 		err = vmemmap_populate_basepages(start, end, node, NULL);
 	else if (boot_cpu_has(X86_FEATURE_PSE))
-		err = vmemmap_populate_hugepages(start, end, node, altmap);
+		err = vmemmap_populate_hugepages(start, end, node, altmap); // 将2M大小的page数组以大页(2M)的方式映射到页表，虚拟地址从vmemmap_base开始，即开始填充vmemmap虚拟数组了（为什么说vmemmap是虚拟数组，是因为它巧妙地和vmemmap_base开始的虚拟地址空间对应了起来，而这些虚拟地址又映射到了真实的pages数组。也就是说将section->section_mem_map指向的是一个虚拟地址，而系统专门为全部page数组的映射保留了1T[ffffea0000000000 - ffffeaffffffffff]的虚拟地址空间，这样就有足够的空间来做一一映射，中间有大量的空洞也无所谓，反正又不占用真实的内存空间）
 	else if (altmap) {
 		pr_err_once("%s: no cpu support for altmap allocations\n",
 				__func__);

@@ -180,7 +180,7 @@ char *parse_args(const char *doing,
 		int ret;
 		int irq_was_disabled;
 
-		args = next_arg(args, &param, &val);
+		args = next_arg(args, &param, &val); // 解析下一个启动命令行参数，name存param，值存val
 		/* Stop at -- */
 		if (!val && strcmp(param, "--") == 0)
 			return err ?: args;

@@ -299,7 +299,7 @@ SYM_CODE_START(ret_from_fork)
 	 * calling kernel_execve().  Exit to userspace to complete the execve()
 	 * syscall.
 	 */
-	movq	$0, RAX(%rsp)
+	movq	$0, RAX(%rsp) /* 初始化的kernel_init执行完try_to_run_init_process后，返回到这里 */
 	jmp	2b
 SYM_CODE_END(ret_from_fork)
 .popsection
