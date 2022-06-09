@@ -677,7 +677,7 @@ static void __init setup_command_line(char *command_line)
 
 static __initdata DECLARE_COMPLETION(kthreadd_done);
 
-noinline void __attribute__((optimize("O0"))) __ref rest_init(void)
+noinline void __ref rest_init(void)
 {
 	struct task_struct *tsk;
 	int pid;
@@ -925,7 +925,7 @@ static void __init print_unknown_bootoptions(void)
 	memblock_free(unknown_options, len);
 }
 
-asmlinkage __visible void __init __no_sanitize_address __attribute__((optimize("O0"))) start_kernel(void)
+asmlinkage __visible void __init __no_sanitize_address start_kernel(void)
 {
 	char *command_line;
 	char *after_dashes;
@@ -1415,7 +1415,7 @@ static void __init do_pre_smp_initcalls(void)
 		do_one_initcall(initcall_from_entry(fn));
 }
 
-static int __attribute__((optimize("O0"))) run_init_process(const char *init_filename)
+static int run_init_process(const char *init_filename)
 {
 	const char *const *p;
 
@@ -1430,7 +1430,7 @@ static int __attribute__((optimize("O0"))) run_init_process(const char *init_fil
 	return kernel_execve(init_filename, argv_init, envp_init);
 }
 
-static int __attribute__((optimize("O0"))) try_to_run_init_process(const char *init_filename)
+static int try_to_run_init_process(const char *init_filename)
 {
 	int ret;
 
