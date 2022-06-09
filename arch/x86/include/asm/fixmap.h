@@ -108,9 +108,6 @@ enum fixed_addresses { /* 这个枚举定义的是高地址到低地址固定虚
 #ifdef CONFIG_PARAVIRT_XXL
 	FIX_PARAVIRT_BOOTMAP,
 #endif
-#ifdef	CONFIG_X86_INTEL_MID
-	FIX_LNW_VRTC,
-#endif
 
 #ifdef CONFIG_ACPI_APEI_GHES
 	/* Used for GHES mapping from assorted contexts */
