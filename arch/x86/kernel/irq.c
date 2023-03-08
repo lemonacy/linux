@@ -237,7 +237,7 @@ static __always_inline void handle_irq(struct irq_desc *desc,
  * common_interrupt() handles all normal device IRQ's (the special SMP
  * cross-CPU interrupts have their own entry points).
  */
-DEFINE_IDTENTRY_IRQ(common_interrupt)
+DEFINE_IDTENTRY_IRQ(common_interrupt)   /* 硬件中断的通用处理函数 */
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 	struct irq_desc *desc;

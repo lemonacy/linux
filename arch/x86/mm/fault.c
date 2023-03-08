@@ -331,7 +331,7 @@ out:
 
 #ifdef CONFIG_CPU_SUP_AMD
 static const char errata93_warning[] =
-KERN_ERR 
+KERN_ERR
 "******* Your BIOS seems to not contain a fix for K8 errata #93\n"
 "******* Working around it, but it may cause SEGVs or burn power.\n"
 "******* Please consider a BIOS update.\n"
@@ -1493,7 +1493,7 @@ handle_page_fault(struct pt_regs *regs, unsigned long error_code,
 	}
 }
 
-DEFINE_IDTENTRY_RAW_ERRORCODE(exc_page_fault)
+DEFINE_IDTENTRY_RAW_ERRORCODE(exc_page_fault)   /* 缺页中断的具体处理函数 */
 {
 	unsigned long address = read_cr2();
 	irqentry_state_t state;

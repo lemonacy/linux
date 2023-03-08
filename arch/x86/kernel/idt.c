@@ -113,7 +113,7 @@ static const __initconst struct idt_data def_idts[] = {
 #endif
 
 	SYSG(X86_TRAP_OF,		asm_exc_overflow),
-#if defined(CONFIG_IA32_EMULATION)
+#if defined(CONFIG_IA32_EMULATION)  /* 老的int 0x80系统调用中断，CONFIG_IA32_EMULATION默认为y，让64位系统支持32位程序的运行 */
 	SYSG(IA32_SYSCALL_VECTOR,	entry_INT80_compat),
 #elif defined(CONFIG_X86_32)
 	SYSG(IA32_SYSCALL_VECTOR,	entry_INT80_32),

@@ -371,7 +371,7 @@ SYM_DATA(initial_stack, .quad init_thread_union + THREAD_SIZE - FRAME_SIZE) /* i
 	__FINITDATA
 
 	__INIT
-SYM_CODE_START(early_idt_handler_array)
+SYM_CODE_START(early_idt_handler_array)     # early_idt_handler_array为一个[32][9]的二维数组，数组的每个元素为一个只包含3条指令的匿名函数，如果少于9个字节用0xcc填充
 	i = 0
 	.rept NUM_EXCEPTION_VECTORS
 	.if ((EXCEPTION_ERRCODE_MASK >> i) & 1) == 0
