@@ -239,7 +239,7 @@ SYM_FUNC_START(__switch_to_asm)
 	 * Save callee-saved registers
 	 * This must match the order in inactive_task_frame
 	 */
-	pushq	%rbp
+	pushq	%rbp    // 注释：这里是将当前的寄存器值报存在了prev task的栈上，而下面268行的popq是将next task栈上的值pop给各个寄存器，pop完后，next task的rsp就指向ret_field了
 	pushq	%rbx
 	pushq	%r12
 	pushq	%r13
@@ -272,7 +272,7 @@ SYM_FUNC_START(__switch_to_asm)
 	popq	%rbx
 	popq	%rbp
 
-	jmp	__switch_to
+	jmp	__switch_to     // 注释：we jump to the __switch_to() function. Hence no return address will be pushed into the stack. Later on, when __switch_to() finishes and returns, the hardware will use the last field in the stack, which is the ret_addr field we placed there during copy_thread()!
 SYM_FUNC_END(__switch_to_asm)
 .popsection
 
