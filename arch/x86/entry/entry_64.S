@@ -302,14 +302,14 @@ SYM_CODE_START(ret_from_fork)
 1:
 	/* kernel thread */
 	UNWIND_HINT_EMPTY
-	movq	%r12, %rdi
-	CALL_NOSPEC rbx
+	movq	%r12, %rdi      // r12为fn的参数
+	CALL_NOSPEC rbx         // rbx为user_mode_thread、kernel_thread传入的fn
 	/*
 	 * A kernel thread is allowed to return here after successfully
 	 * calling kernel_execve().  Exit to userspace to complete the execve()
 	 * syscall.
 	 */
-	movq	$0, RAX(%rsp) /* 初始化的kernel_init执行完try_to_run_init_process后，返回到这里 */
+	movq	$0, RAX(%rsp)   // 初始化的kernel_init执行完try_to_run_init_process后，返回到这里
 	jmp	2b
 SYM_CODE_END(ret_from_fork)
 .popsection
