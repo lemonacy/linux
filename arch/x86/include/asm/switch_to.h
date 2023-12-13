@@ -80,7 +80,7 @@ static inline void update_task_stack(struct task_struct *task)
 static inline void kthread_frame_init(struct inactive_task_frame *frame,
 				      int (*fun)(void *), void *arg)
 {
-	frame->bx = (unsigned long)fun;
+	frame->bx = (unsigned long)fun;     // 在ret_from_fork中会CALL_NOSPEC rbx，调用的就是线程函数fn
 #ifdef CONFIG_X86_32
 	frame->di = (unsigned long)arg;
 #else
