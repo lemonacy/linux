@@ -757,10 +757,10 @@ static inline void spin_lock_prefetch(const void *x)
 
 #define task_pt_regs(task) \
 ({									\
-	unsigned long __ptr = (unsigned long)task_stack_page(task);	\       // __ptr指向task_struct的开始位置
-	__ptr += THREAD_SIZE - TOP_OF_KERNEL_STACK_PADDING;		\           // __ptr += 8k（一个task_struct项占8k）
-	((struct pt_regs *)__ptr) - 1;					\                   // 减1为指针操作，top减掉一个struct pt_regs，则刚好是pt_regs的位置
-})
+	unsigned long __ptr = (unsigned long)task_stack_page(task);	\
+	__ptr += THREAD_SIZE - TOP_OF_KERNEL_STACK_PADDING;		\
+	((struct pt_regs *)__ptr) - 1;					\
+})  // __ptr指向task_struct的开始位置, __ptr += 8k（一个task_struct项占8k）, 减1为指针操作，top减掉一个struct pt_regs，则刚好是pt_regs的位置
 
 #ifdef CONFIG_X86_32
 #define INIT_THREAD  {							  \
