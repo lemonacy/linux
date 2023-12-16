@@ -545,11 +545,11 @@ SYM_CODE_END(vc_no_ghcb)
 #define PTI_USER_PGD_FILL	0
 #endif
 
-/* Automate the creation of 1 to 1 mapping pmd entries */
+/* Automate the creation of 1 to 1 mapping pmd entries, PMD_SHIFT=21 */
 #define PMDS(START, PERM, COUNT)			\
 	i = 0 ;						\
 	.rept (COUNT) ;					\
-	.quad	(START) + (i << PMD_SHIFT) + (PERM) ;	\   // PMD_SHIFT=21
+	.quad	(START) + (i << PMD_SHIFT) + (PERM) ;	\
 	i = i + 1 ;					\
 	.endr
 
@@ -635,8 +635,8 @@ SYM_DATA_END(level2_kernel_pgt)
 SYM_DATA_START_PAGE_ALIGNED(level2_fixmap_pgt)                              // level2_fixmap_pgt会继续填充level1_fixmap_pgt对应的页表项，level1_fixmap_pgt映射的是4k页
 	.fill	(512 - 4 - FIXMAP_PMD_NUM),8,0                                  // FIXMAP_PMD_NUM=2, 用0填充前506项
 	pgtno = 0
-	.rept (FIXMAP_PMD_NUM)                                                  // 填充2项level2_fixmap_pgt[506]和level2_fixmap_pgt[507]
-	.quad level1_fixmap_pgt + (pgtno << PAGE_SHIFT) - __START_KERNEL_map \  // PAGE_SHIFT=12
+	.rept (FIXMAP_PMD_NUM)                                                  // 填充2项level2_fixmap_pgt[506]和level2_fixmap_pgt[507], PAGE_SHIFT=12
+	.quad level1_fixmap_pgt + (pgtno << PAGE_SHIFT) - __START_KERNEL_map \
 		+ _PAGE_TABLE_NOENC;
 	pgtno = pgtno + 1
 	.endr
