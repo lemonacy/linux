@@ -15,7 +15,7 @@
 #include "boot.h"
 #include "string.h"
 
-struct boot_params boot_params __attribute__((aligned(16)));
+struct boot_params boot_params __attribute__((aligned(16)));    // boot_params变量定义在arch/x86/boot/main.c#18
 
 struct port_io_ops pio_ops;
 
@@ -38,7 +38,7 @@ static void copy_boot_params(void)
 		absolute_pointer(OLD_CL_ADDRESS);
 
 	BUILD_BUG_ON(sizeof(boot_params) != 4096);
-	memcpy(&boot_params.hdr, &hdr, sizeof(hdr));
+	memcpy(&boot_params.hdr, &hdr, sizeof(hdr));    // hdr定义在header.S中：.globl  hdr，一些内容是build时填充的，一些是bootloader加载时填充的
 
 	if (!boot_params.hdr.cmd_line_ptr &&
 	    oldcmd->cl_magic == OLD_CL_MAGIC) {
@@ -69,7 +69,7 @@ static void keyboard_init(void)
 	initregs(&ireg);
 
 	ireg.ah = 0x02;		/* Get keyboard status */
-	intcall(0x16, &ireg, &oreg);
+	intcall(0x16, &ireg, &oreg);    // 0x16号BIOS中断用来操作PC键盘
 	boot_params.kbd_status = oreg.al;
 
 	ireg.ax = 0x0305;	/* Set keyboard repeat rate */
@@ -135,15 +135,15 @@ static void init_heap(void)
 
 void main(void)
 {
-	puts("enter C-code main in 16-bit\n");	/* puts()通过bios int 0x10中断输出到屏幕上，无需console_init()即可使用 */
+	puts("enter C-code main in 16-bit\n");	/* puts()通过bios int 0x10中断输出到屏幕上，无需console_init()即可使用。在syslinux-fdimage.img下可成功打印出来 */
 	init_default_io_ops();
 	/* First, copy the boot header into the "zeropage" */
-	copy_boot_params();
+	copy_boot_params(); // 做的事情很简单，就是从bootsec中把那一堆参数赋值到C语言的变量boot_params中，方便后面的引用
 
 	/* Initialize the early-boot console */
 	console_init();
 
-	/* asran debug info */
+	/* asran debug info: early_serial_base即为串口的port。如果在cmd_line中定义了serial,0x3f8,115200，则puts()除输出一份到console外，还会输出一份到串口终端上。比如在机房里启动linux时，如果想看boot早期的输出，则需要定义此参数。 */
 	if(early_serial_base == 0x3f8)
 		puts("early_serial_base=0x3f8\n");
 	else if (early_serial_base == 0x2f8)
@@ -189,8 +189,8 @@ void main(void)
 #endif
 
 	/* Set the video mode */
-	set_video(); /* 设置显示器text display mode，同时进行清屏操作 */
+	set_video(); /* 设置显示器text display mode，同时进行清屏操作。如果要看早期的puts()内容，则需要在此设置一个断点 */
 
 	/* Do the last things and invoke protected mode */
-	go_to_protected_mode();
+	go_to_protected_mode(); // 跳转到16位的C代码中去执行main()函数
 }

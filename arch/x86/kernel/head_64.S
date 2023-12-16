@@ -30,18 +30,18 @@
  * We are not able to switch in one step to the final KERNEL ADDRESS SPACE
  * because we need identity-mapped pages.
  */
-#define l4_index(x)	(((x) >> 39) & 511) /* 取L4的index，39~47位 */
-#define pud_index(x)	(((x) >> PUD_SHIFT) & (PTRS_PER_PUD-1)) /* 取L3的index，30~38位 */
+#define l4_index(x)	    (((x) >> 39) & 511)                     // 取L4的index，39~47位
+#define pud_index(x)	(((x) >> PUD_SHIFT) & (PTRS_PER_PUD-1)) // 取L3的index，30~38位. 即：(((x) >> 30) & 511)
 
-L4_PAGE_OFFSET = l4_index(__PAGE_OFFSET_BASE_L4)    /* __PAGE_OFFSET_BASE_L4=0xffff888000000000，PAGE_OFFSET内核态地址空间的界限，大约在地址空间的末尾119.5T处，这个空间足够满足内核的运行需要了。 */
-L4_START_KERNEL = l4_index(__START_KERNEL_map)  /* __START_KERNEL_map=0xffffffff80000000 内核虚拟地址的起始位置，距离地址空间末尾800M处。L4_START_KERNEL=511  */
+L4_PAGE_OFFSET = l4_index(__PAGE_OFFSET_BASE_L4)    // __PAGE_OFFSET_BASE_L4=0xffff888000000000, L4_PAGE_OFFSET=0x111(273)
+L4_START_KERNEL = l4_index(__START_KERNEL_map)      // __START_KERNEL_map=0xffffffff80000000, L4_START_KERNEL=511, 内核虚拟地址的起始位置(离64位地址空间末尾还有800M)
 
-L3_START_KERNEL = pud_index(__START_KERNEL_map) /* L3_START_KERNEL=510 */
+L3_START_KERNEL = pud_index(__START_KERNEL_map)     // L3_START_KERNEL=510
 
 	.text
 	__HEAD
 	.code64
-SYM_CODE_START_NOALIGN(startup_64)  /* 为什么解压缩后这个函数刚好在16M的位置？这是因为此处的__HEAD宏让这个函数是位于vmlinux代码段的最开始处（readelf vmlinux -s |grep startup_64，结果：ffffffff81000000    60 NOTYPE  GLOBAL DEFAULT    1 startup_64，再通过readelf vmlinux -l，可知代码段起始虚拟地址为0xffffffff81000000），vmlinux将被压缩后放置在bzImage中 */
+SYM_CODE_START_NOALIGN(startup_64)  // 为什么解压缩后这个函数刚好在16M的位置？这是因为此处的__HEAD宏让这个函数是位于vmlinux代码段的最开始处(定义在arch/x86/kernel/vmlinux.lds.S中)（readelf vmlinux -s |grep startup_64，结果：ffffffff81000000，再通过readelf -l vmlinux可知代码段起始虚拟地址为0xffffffff81000000）
 	UNWIND_HINT_EMPTY
 	/*
 	 * At this point the CPU runs in 64bit mode CS.L = 1 CS.D = 0,
@@ -62,9 +62,9 @@ SYM_CODE_START_NOALIGN(startup_64)  /* 为什么解压缩后这个函数刚好�
 	 */
 
 	/* Set up the stack for verify_cpu(), similar to initial_stack below */
-	leaq	(__end_init_task - FRAME_SIZE)(%rip), %rsp   /* debug: __end_init_task - SIZEOF_PTREGS=0x1403f51, SIZEOF_PTREGS=21*8, 21个寄存器需要保存在内核堆栈的顶端pt_regs, rip=0x1000000, rsp=0x2403f58 */
+	leaq	(__end_init_task - FRAME_SIZE)(%rip), %rsp   // FRAME_SIZE(SIZEOF_PTREGS)=268(21*8), __end_init_task - 268=0x1803f51, 21个寄存器需要保存在内核堆栈的顶端pt_regs, %rip=0x1000000, rsp=0x2803f58
 
-	leaq	_text(%rip), %rdi   /* debug: _text=-0xf, rdi=0x1000000, rid保存startup_64的内存地址（默认16M处）, rdi为下面调用startup_64_setup_env的第一个参数 */
+	leaq	_text(%rip), %rdi   // _text=-0xe, rdi=0x1000000, rid保存startup_64的内存地址（默认16M处）, rdi为下面调用startup_64_setup_env的第一个参数physbase
 
 	/*
 	 * initial_gs points to initial fixed_percpu_data struct with storage for
@@ -72,17 +72,17 @@ SYM_CODE_START_NOALIGN(startup_64)  /* 为什么解压缩后这个函数刚好�
 	 * stage, so apply them as is done in fixup_pointer(), and initialize %gs
 	 * such that the canary can be accessed at %gs:40 for subsequent C calls.
 	 */
-	movl	$MSR_GS_BASE, %ecx
-	movq	initial_gs(%rip), %rax
-	movq	$_text, %rdx
-	subq	%rdx, %rax
-	addq	%rdi, %rax
-	movq	%rax, %rdx
-	shrq	$32,  %rdx
-	wrmsr
+	movl	$MSR_GS_BASE, %ecx      // MSR_GS_BASE=0xc0000101
+	movq	initial_gs(%rip), %rax  // initial_gs=0x1a57546, rax=0xffffffff82e49000
+	movq	$_text, %rdx            // _text=0xffffffff81000000
+	subq	%rdx, %rax              // rax=0x1e49000
+	addq	%rdi, %rax              // rdi=0x1000000, rax=0x2e49000
+	movq	%rax, %rdx              // rdx=0x2e49000
+	shrq	$32,  %rdx              // rdx=0x0
+	wrmsr                           // 将edx:eax8字节内容写入msr寄存器
 
-	pushq	%rsi	/* rsi保存的还是boot_params，位置0x139f0 */
-	call	startup_64_setup_env
+	pushq	%rsi	                // rsi保存的还是boot_params，位置0x139f0
+	call	startup_64_setup_env    // 将切换gdt到startup_gdt
 	popq	%rsi
 
 #ifdef CONFIG_AMD_MEM_ENCRYPT
@@ -99,10 +99,10 @@ SYM_CODE_START_NOALIGN(startup_64)  /* 为什么解压缩后这个函数刚好�
 #endif
 
 	/* Now switch to __KERNEL_CS so IRET works reliably */
-	pushq	$__KERNEL_CS    /* __KERNEL_CS=0x10 */
-	leaq	.Lon_kernel_cs(%rip), %rax  /* lea    0x3(%rip),%rax  # rax=0x1000021 */
+	pushq	$__KERNEL_CS                /* __KERNEL_CS=0x10 */
+	leaq	.Lon_kernel_cs(%rip), %rax  /* lea 0x3(%rip),%rax, rax=0x1000043 */
 	pushq	%rax
-	lretq   /* debug: 物理地址0x100001f */
+	lretq
 
 .Lon_kernel_cs:
 	UNWIND_HINT_EMPTY
@@ -116,14 +116,14 @@ SYM_CODE_START_NOALIGN(startup_64)  /* 为什么解压缩后这个函数刚好�
 	 * is active) to be added to the initial pgdir entry that will be
 	 * programmed into CR3.
 	 */
-	leaq	_text(%rip), %rdi /* lea    -0x2d(%rip),%rdi        # 0x1000000 */
-	pushq	%rsi
-	call	__startup_64    /* 初始化early_top_pgt等，返回rax=0 */
+	leaq	_text(%rip), %rdi   /* lea -0x2d(%rip),%rdi, rdi=0x1000000 */
+	pushq	%rsi                // rsi保存的还是boot_params，位置0x139f0
+	call	__startup_64        /* 第1个参数physaddr, 第2个参数boot_params. 初始化early_top_pgt等，返回rax=0 */
 	popq	%rsi
 
 	/* Form the CR3 value being sure to include the CR3 modifier */
-	addq	$(early_top_pgt - __START_KERNEL_map), %rax /* add    $0x2a6e000,%rax # rax=0，相加后rax=0x2a6e000 */
-	jmp 1f  /* jmp    0x1000052 */
+	addq	$(early_top_pgt - __START_KERNEL_map), %rax /* add $0x2ed4000,%rax, rax=0x2ed4000. early_top_pgt就定义在本文件下面 */
+	jmp 1f                      /* jmp 0x100006e */
 SYM_CODE_END(startup_64)
 
 SYM_CODE_START(secondary_startup_64)
@@ -188,17 +188,17 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 #endif
 
 	/* Enable PAE mode, PGE and LA57 */
-	orl	$(X86_CR4_PAE | X86_CR4_PGE), %ecx  /* debug: 物理地址0x1000052，movl $0xa0,%ecx*/
+	orl	$(X86_CR4_PAE | X86_CR4_PGE), %ecx  /* movl $0xa0,%ecx */
 #ifdef CONFIG_X86_5LEVEL
-	testl	$1, __pgtable_l5_enabled(%rip)  /* debug: testl $0x1,0x12d7f47(%rip) */
-	jz	1f  /* 默认没有开启LA57，跳转到下面的1f */
-	orl	$X86_CR4_LA57, %ecx
+	testl	$1, __pgtable_l5_enabled(%rip)  /* testl  $0x1,0x16693ac(%rip) */
+	jz	1f                                  /* 默认没有开启LA57，跳转到下面的1f */
+	orl	$X86_CR4_LA57, %ecx                 // X86_CR4_LA57=0x1000
 1:
 #endif
-	movq	%rcx, %cr4  /* debug: rcx=0xa0 （设置虚拟8086模式等）*/
+	movq	%rcx, %cr4                      /* rcx=0xa0 （设置虚拟8086模式等）*/
 
 	/* Setup early boot stage 4-/5-level pagetables. */
-	addq	phys_base(%rip), %rax   /* debug: add 0x1415f9d(%rip),%rax, phys_base(%rip)=0(物理基地址为0), rax=0x2a6e000 */
+	addq	phys_base(%rip), %rax           /* add 0x1815f7a(%rip),%rax, phys_base(%rip)=0, rax=0x2ed4000(early_top_pgt) */
 
 	/*
 	 * For SEV guests: Verify that the C-bit is correct. A malicious
@@ -221,7 +221,7 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	 * init_top_pgt here, away from the trampoline_pgd and unmap the
 	 * indentity mapped ranges.
 	 */
-	movq	%rax, %cr3  /* rax=0x2a6e000，加载的是early_top_pgt */
+	movq	%rax, %cr3      /* rax=0x2ed4000，加载的是early_top_pgt */
 
 	/*
 	 * Do a global TLB flush after the CR3 switch to make sure the TLB
@@ -230,13 +230,13 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	movq	%cr4, %rcx
 	movq	%rcx, %rax
 	xorq	$X86_CR4_PGE, %rcx
-	movq	%rcx, %cr4
-	movq	%rax, %cr4
+	movq	%rcx, %cr4      // 开启分页
+	movq	%rax, %cr4      // 立马又关闭分页（恢复为原来的cr4）, flush TLB
 
 	/* Ensure I am executing from virtual addresses */
-	movq	$1f, %rax   /* mov $0xffffffff81000089,%rax */
+	movq	$1f, %rax       /* mov $0xffffffff810000bf,%rax */
 	ANNOTATE_RETPOLINE_SAFE
-	jmp	*%rax   /* debug: 物理地址0x1000087。这里不能直接使用jmp 1f，因为这样是一个相对地址调转（编译器就计算好了相对位置）。因为此刻我们要进入0xffffffff81000000后的高地址空间，必须要使用一个绝对的地址跳转。虚拟地址0xffffffff81000089转换为物理地址的步骤为：cr3 -> early_top_pgt[511] -> level3_kernel_pgt[510] -> level2_kernel_pgt[8]，页表项为0x00000000010001e3(2M页大小)，刚好映射到物理内存16M处。*/
+	jmp	*%rax               /* 当前指令地址0x10000bd。这里不能直接使用jmp 1，不然编译后就是jmp 0x2。因为此刻我们要进入0xffffffff81000000高地址空间，必须要使用一个绝对的地址来跳转。虚拟地址0xffffffff810000bf转换为物理地址的步骤为：cr3 -> early_top_pgt[511] -> level3_kernel_pgt[510] -> level2_kernel_pgt[8]，页表项为0x00000000010001e3(2M页大小)，刚好映射到物理内存16M处。*/
 1:
 	UNWIND_HINT_EMPTY
 	ANNOTATE_NOENDBR // above
@@ -247,7 +247,7 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	 * addresses where we're currently running on. We have to do that here
 	 * because in 32bit we couldn't load a 64bit linear address.
 	 */
-	lgdt	early_gdt_descr(%rip)   /* debug: 使用了高地址页表(early_top_gpt)映射后，虚拟地址为0xffffffff81000089(lgdt 0x1415f70(%rip), rip=0xffffffff81000089)。物理地址为0x1000089 */
+	lgdt	early_gdt_descr(%rip)   /* debug: 使用了高地址页表(early_top_gpt)映射后，虚拟地址为0xffffffff810000bf(lgdt 0x1815f3a(%rip), rip=0xffffffff810000bf)。物理地址为0x10000bf */
 
 	/* set up data segments */ /* 将数据段寄存器都清0，为什么呢？？难道下面使用的时候再具体赋值？ */
 	xorl %eax,%eax
@@ -270,7 +270,7 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	 * Note that, on SMP, the boot cpu uses init data section until
 	 * the per cpu areas are set up.
 	 */
-	movl	$MSR_GS_BASE,%ecx   /* debug: mov $0xc0000101,%ecx */
+	movl	$MSR_GS_BASE,%ecx               // MSR_GS_BASE=0xc0000101
 	movl	initial_gs(%rip),%eax
 	movl	initial_gs+4(%rip),%edx
 	wrmsr
@@ -300,7 +300,7 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	 */
 	movl    %eax, %edx
 	btsl	$_EFER_SCE, %eax	/* Enable System Call */
-	btl	$20,%edi		/* No Execute supported? */
+	btl	    $20,%edi		    /* No Execute supported? */
 	jnc     1f
 	btsl	$_EFER_NX, %eax
 	btsq	$_PAGE_BIT_NX,early_pmd_flags(%rip)
@@ -309,10 +309,10 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 1:	cmpl	%edx, %eax
 	je	1f
 	xor	%edx, %edx
-	wrmsr				/* Make changes effective */
+	wrmsr				        /* Make changes effective */
 1:
 	/* Setup cr0 */
-	movl	$CR0_STATE, %eax    /* debug: CR0_STATE=0x80050033 */
+	movl	$CR0_STATE, %eax    /* CR0_STATE=0x80050033 */
 	/* Make changes effective */
 	movq	%rax, %cr0
 
@@ -322,7 +322,7 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 
 	/* rsi is pointer to real mode structure with interesting info.
 	   pass it to C */
-	movq	%rsi, %rdi
+	movq	%rsi, %rdi          // %rsi=0x13dd0(boot_params), x86_64_start_kernel(char * real_mode_data)唯一的一个参数
 
 .Ljump_to_C_code:
 	/*
@@ -351,11 +351,11 @@ SYM_INNER_LABEL(secondary_startup_64_no_verify, SYM_L_GLOBAL)
 	 *		address given in m16:64.
 	 */
 	pushq	$.Lafter_lret	# put return address on stack for unwinder
-	xorl	%ebp, %ebp	# clear frame pointer
-	movq	initial_code(%rip), %rax    /* debug=> 0xffffffff810000fb:  mov    0x1640c16(%rip),%rax        # 0xffffffff82640d18为initial_code的地址, rax=0xffffffff82a134c4(inital_code就在本文件的头部定义，其值为：x86_64_start_kernel) */
-	pushq	$__KERNEL_CS	# set correct cs    debug=> 0xffffffff81000102:  pushq  $0x10
-	pushq	%rax		# target address in negative space
-	lretq   # debug=> 0xffffffff81000105:  lretq，跳转到arch/x86/kernel/head64.c的x86_64_start_kernel()去执行。
+	xorl	%ebp, %ebp	    # clear frame pointer
+	movq	initial_code(%rip), %rax    // initial_code=x86_64_start_kernel, %rax=0xffffffff82e743fe
+	pushq	$__KERNEL_CS	# set correct cs    debug=> 0xffffffff81000140:  pushq  $0x10
+	pushq	%rax		    # target address in negative space, %rax=0xffffffff82e743fe
+	lretq                   # debug=> 0xffffffff81000143:  lretq，跳转到arch/x86/kernel/head64.c#x86_64_start_kernel()去执行
 .Lafter_lret:
 	ANNOTATE_NOENDBR
 SYM_CODE_END(secondary_startup_64)
@@ -549,20 +549,20 @@ SYM_CODE_END(vc_no_ghcb)
 #define PMDS(START, PERM, COUNT)			\
 	i = 0 ;						\
 	.rept (COUNT) ;					\
-	.quad	(START) + (i << PMD_SHIFT) + (PERM) ;	\
+	.quad	(START) + (i << PMD_SHIFT) + (PERM) ;	\   // PMD_SHIFT=21
 	i = i + 1 ;					\
 	.endr
 
 	__INITDATA
 	.balign 4
 
-SYM_DATA_START_PTI_ALIGNED(early_top_pgt)   /* 8k对齐，early_top_pgt[511]在arch/x86/kernel/head64.c#__startup_64()中被赋值(*p = (unsigned long)level3_kernel_pgt;) */
+SYM_DATA_START_PTI_ALIGNED(early_top_pgt)   // 8k对齐，early_top_pgt[511]=level3_kernel_pgt(arch/x86/kernel/head64.c#__startup_64()中赋值
 	.fill	512,8,0
-	.fill	PTI_USER_PGD_FILL,8,0 /* PTI_USER_PGD_FILL=512 */
-SYM_DATA_END(early_top_pgt)
+	.fill	PTI_USER_PGD_FILL,8,0           // PTI_USER_PGD_FILL=512
+SYM_DATA_END(early_top_pgt)                 // early_top_pgt占2页
 
 SYM_DATA_START_PAGE_ALIGNED(early_dynamic_pgts) /* 4k对齐，共64页 */
-	.fill	512*EARLY_DYNAMIC_PAGE_TABLES,8,0 /* EARLY_DYNAMIC_PAGE_TABLES=64 */
+	.fill	512*EARLY_DYNAMIC_PAGE_TABLES,8,0   /* EARLY_DYNAMIC_PAGE_TABLES=64 */
 SYM_DATA_END(early_dynamic_pgts)
 
 SYM_DATA(early_recursion_flag, .long 0)
@@ -570,13 +570,13 @@ SYM_DATA(early_recursion_flag, .long 0)
 	.data
 
 #if defined(CONFIG_XEN_PV) || defined(CONFIG_PVH)
-SYM_DATA_START_PTI_ALIGNED(init_top_pgt)
+SYM_DATA_START_PTI_ALIGNED(init_top_pgt)    // init_top_pgt默认不会被用到
 	.quad   level3_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC /* 第0项 */
 	.org    init_top_pgt + L4_PAGE_OFFSET*8, 0
 	.quad   level3_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC /* 第273项，映射到内核态地址空间开始处0xffff888000000000 */
 	.org    init_top_pgt + L4_START_KERNEL*8, 0
 	/* (2^48-(2*1024*1024*1024))/(2^39) = 511 */
-	.quad   level3_kernel_pgt - __START_KERNEL_map + _PAGE_TABLE_NOENC /* 第511项，映射到0xffffffff80000000处 */
+	.quad   level3_kernel_pgt - __START_KERNEL_map + _PAGE_TABLE_NOENC  /* 第511项，映射到0xffffffff80000000处 */
 	.fill	PTI_USER_PGD_FILL,8,0
 SYM_DATA_END(init_top_pgt)
 
@@ -584,7 +584,7 @@ SYM_DATA_START_PAGE_ALIGNED(level3_ident_pgt)
 	.quad	level2_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC
 	.fill	511, 8, 0
 SYM_DATA_END(level3_ident_pgt)
-SYM_DATA_START_PAGE_ALIGNED(level2_ident_pgt) /* init_top_pgt的第0项和273项都映射到物理地址的首1G */
+SYM_DATA_START_PAGE_ALIGNED(level2_ident_pgt)                           /* init_top_pgt的第0项和273项都映射到物理地址的首1G */
 	/*
 	 * Since I easily can, map the first 1G.
 	 * Don't set NX because code runs from these pages.
@@ -593,7 +593,7 @@ SYM_DATA_START_PAGE_ALIGNED(level2_ident_pgt) /* init_top_pgt的第0项和273项
 	 * the CPU supports it or it is enabled.  But,
 	 * the CPU should ignore the bit.
 	 */
-	PMDS(0, __PAGE_KERNEL_IDENT_LARGE_EXEC, PTRS_PER_PMD) /* PTRS_PER_PMD=512 */
+	PMDS(0, __PAGE_KERNEL_IDENT_LARGE_EXEC, PTRS_PER_PMD)               /* PTRS_PER_PMD=512 */
 SYM_DATA_END(level2_ident_pgt)
 #else
 SYM_DATA_START_PTI_ALIGNED(init_top_pgt)
@@ -603,20 +603,19 @@ SYM_DATA_END(init_top_pgt)
 #endif
 
 #ifdef CONFIG_X86_5LEVEL
-SYM_DATA_START_PAGE_ALIGNED(level4_kernel_pgt)
+SYM_DATA_START_PAGE_ALIGNED(level4_kernel_pgt)                          // 默认不会用到, early_top_pgt(pgd)->level3_kernel_pgt
 	.fill	511,8,0
 	.quad	level3_kernel_pgt - __START_KERNEL_map + _PAGE_TABLE_NOENC
 SYM_DATA_END(level4_kernel_pgt)
 #endif
 
 SYM_DATA_START_PAGE_ALIGNED(level3_kernel_pgt)
-	.fill	L3_START_KERNEL,8,0
-	/* (2^48-(2*1024*1024*1024)-((2^39)*511))/(2^30) = 510 */
-	.quad	level2_kernel_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC
-	.quad	level2_fixmap_pgt - __START_KERNEL_map + _PAGE_TABLE_NOENC
+	.fill	L3_START_KERNEL,8,0                                             // L3_START_KERNEL=510, 跳过level3_kernel_pgt前面的510项
+	.quad	level2_kernel_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC    // level2_kernel_pgt=ffffffff82812000, __START_KERNEL_map=0xffffffff80000000, _KERNPG_TABLE_NOENC=(__PP|__RW|   0|___A|   0|___D|   0|   0). level3_kernel_pgt[510]对应0xFFFFFFFF80000000~0xFFFFFFFFC0000000(1G)
+	.quad	level2_fixmap_pgt - __START_KERNEL_map + _PAGE_TABLE_NOENC      // level2_fixmap_pgt=ffffffff82813000, _PAGE_TABLE_NOENC=(__PP|__RW|_USR|___A|   0|___D|   0|   0). level3_kernel_pgt[511]对应0xFFFFFFFFC0000000~0xFFFFFFFFFFFFFFFF(1G)
 SYM_DATA_END(level3_kernel_pgt)
 
-SYM_DATA_START_PAGE_ALIGNED(level2_kernel_pgt)
+SYM_DATA_START_PAGE_ALIGNED(level2_kernel_pgt)                              // 映射物理内存0~1G的地址
 	/*
 	 * Kernel high mapping.
 	 *
@@ -630,14 +629,14 @@ SYM_DATA_START_PAGE_ALIGNED(level2_kernel_pgt)
 	 * Care must be taken to clear out undesired bits later, like _PAGE_RW
 	 * or _PAGE_GLOBAL in some cases.
 	 */
-	PMDS(0, __PAGE_KERNEL_LARGE_EXEC, KERNEL_IMAGE_SIZE/PMD_SIZE)   /* KERNEL_IMAGE_SIZE=1G, PMD_SIZE=21(2M), KERNEL_IMAGE_SIZE/PMD_SIZE=512*/
+	PMDS(0, __PAGE_KERNEL_LARGE_EXEC, KERNEL_IMAGE_SIZE/PMD_SIZE)           // KERNEL_IMAGE_SIZE=1G, PMD_SIZE=21(2M), KERNEL_IMAGE_SIZE/PMD_SIZE=512. PMDS循环512次来填充level2_kernel_pgt的每一项，并且和物理地址一一对应
 SYM_DATA_END(level2_kernel_pgt)
 
-SYM_DATA_START_PAGE_ALIGNED(level2_fixmap_pgt)
-	.fill	(512 - 4 - FIXMAP_PMD_NUM),8,0
+SYM_DATA_START_PAGE_ALIGNED(level2_fixmap_pgt)                              // level2_fixmap_pgt会继续填充level1_fixmap_pgt对应的页表项，level1_fixmap_pgt映射的是4k页
+	.fill	(512 - 4 - FIXMAP_PMD_NUM),8,0                                  // FIXMAP_PMD_NUM=2, 用0填充前506项
 	pgtno = 0
-	.rept (FIXMAP_PMD_NUM)
-	.quad level1_fixmap_pgt + (pgtno << PAGE_SHIFT) - __START_KERNEL_map \
+	.rept (FIXMAP_PMD_NUM)                                                  // 填充2项level2_fixmap_pgt[506]和level2_fixmap_pgt[507]
+	.quad level1_fixmap_pgt + (pgtno << PAGE_SHIFT) - __START_KERNEL_map \  // PAGE_SHIFT=12
 		+ _PAGE_TABLE_NOENC;
 	pgtno = pgtno + 1
 	.endr
@@ -645,8 +644,8 @@ SYM_DATA_START_PAGE_ALIGNED(level2_fixmap_pgt)
 	.fill	4,8,0
 SYM_DATA_END(level2_fixmap_pgt)
 
-SYM_DATA_START_PAGE_ALIGNED(level1_fixmap_pgt)
-	.rept (FIXMAP_PMD_NUM)  /* FIXMAP_PMD_NUM=2 */
+SYM_DATA_START_PAGE_ALIGNED(level1_fixmap_pgt)  // 共2个level1_fixmap_pgt页表(每个页表占4k)
+	.rept (FIXMAP_PMD_NUM)                      // FIXMAP_PMD_NUM=2
 	.fill	512,8,0
 	.endr
 SYM_DATA_END(level1_fixmap_pgt)

@@ -120,5 +120,5 @@ void go_to_protected_mode(void)
 	setup_idt();
 	setup_gdt();
 	protected_mode_jump(boot_params.hdr.code32_start,   /* debug: 默认为1M，但bootloader可以在加载内核的时候修改，qemu默认不会修改。 */
-			    (u32)&boot_params + (ds() << 4));
+			    (u32)&boot_params + (ds() << 4));       // 数据段地址+offset
 }

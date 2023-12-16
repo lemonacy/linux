@@ -61,13 +61,13 @@ start2:
 	movw	$bugger_off_msg, %si
 
 msg_loop:
-	lodsb   /* 从si指向的地址读取一个字节，存入al */
+	lodsb               /* 从si指向的地址读取一个字节，存入al */
 	andb	%al, %al    /* 如果al为NULL，则停止 */
 	jz	bs_die
 	movb	$0xe, %ah   /* 将int 0x10的显示字符功能号0xe放入ah，表示要打印字符，al存放字符，bl设置前景色 */
 	movw	$7, %bx
 	int	$0x10
-	jmp	msg_loop    /* 循环打印，直至字符串结束NULL */
+	jmp	msg_loop        /* 循环打印，直至字符串结束NULL */
 
 bs_die:
 	# Allow the user to press a key, then reboot
@@ -290,7 +290,7 @@ root_flags:	.word ROOT_RDONLY
 syssize:	.long 0			/* Filled in by build.c, 编译后的值为0x93578，约590k */
 ram_size:	.word 0			/* Obsolete */
 vid_mode:	.word SVGA_MODE /* 编译之后的值为NORMAL_VGA（0xffff），在arch/x86/include/uapi/asm/boot.h中定义了三种模式：NORMAL_VGA(0xffff),EXTENDED_VGA(0xfffe),ASK_VGA(0xfffd) */
-root_dev:	.word 0			/* Filled in by build.c */
+root_dev:	.word 0			/* Filled in by build.c，编译之后为0000，不知道会不会被qemu来填充，要debug时才知道 */
 boot_flag:	.word 0xAA55
 
 	# offset 512, entry point
@@ -638,7 +638,7 @@ start_of_setup:
 	rep; stosl
 
 # Jump to C code (should not return)
-	calll	main
+	calll	main                # 上面从start_of_setup开始都只是为了准备调用此16位main()函数的堆栈和bss，为调研C函数做准备
 
 # Setup corrupt somehow...
 setup_bad:

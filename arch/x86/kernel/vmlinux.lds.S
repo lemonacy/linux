@@ -117,12 +117,12 @@ SECTIONS
 	. = LOAD_OFFSET + LOAD_PHYSICAL_ADDR;
 	phys_startup_32 = ABSOLUTE(startup_32 - LOAD_OFFSET);
 #else
-	. = __START_KERNEL;
-	phys_startup_64 = ABSOLUTE(startup_64 - LOAD_OFFSET);
+	. = __START_KERNEL;             // 0xffffffff81000000
+	phys_startup_64 = ABSOLUTE(startup_64 - LOAD_OFFSET);   // LOAD_OFFSET=0xffffffff80000000
 #endif
 
 	/* Text and read-only data */
-	.text :  AT(ADDR(.text) - LOAD_OFFSET) {
+	.text :  AT(ADDR(.text) - LOAD_OFFSET) {    // ADDR(.text)=0xffffffff81000000, LOAD_OFFSET=0xffffffff80000000, 即AT(0x1000000), AT()是用来定义section的加载地址(LMA)的
 		_text = .;
 		_stext = .;
 		/* bootstrapping code */
@@ -144,7 +144,7 @@ SECTIONS
 		*(.text.__x86.*)
 		__indirect_thunk_end = .;
 #endif
-	} :text =0xcccc
+	} :text =0xcccc     // 0xcccc指明用于填充section对齐而产生的空隙
 
 	/* End of text section, which should occupy whole number of pages */
 	_etext = .;
