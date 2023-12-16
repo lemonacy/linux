@@ -69,10 +69,10 @@
  * expression requires startup_32 to be in the same section as the code being
  * assembled.
  */
-#define rva(X) ((X) - startup_32)
+#define rva(X) ((X) - startup_32)   // 为什么要定义这种通过相对地址去获取X地址的机制，因为在32位下还没有rip机制，这个rva宏也仅在startup_32中使用，进入到下面的startup_64就可以直接用%rip了
 
 	.code32
-    // 默认加载到物理内存1M处
+    // 默认加载到物理内存1M处, 可以使用qemu来debug完整的内核：qemu-system-x86_64 -smp 1,cores=1,threads=1,sockets=1 -kernel arch/x86/boot/bzImage -initrd initrd.cpio.gz -nographic -append "console=ttyS0 nokaslr" -m 4096 -s -S, GDB：gdb vmlinux -ex 'target remote :1234' -ex 'b *0x100000' -ex 'c', 需要通过物理地址来下断点，不然会跟arch/x86/kernel/head_32.S#startup_32冲突
 SYM_FUNC_START(startup_32)
 	/*
 	 * 32bit entry is 0 and it is ABI so immutable!
@@ -91,11 +91,11 @@ SYM_FUNC_START(startup_32)
  * data at 0x1e4 (defined as a scratch field) are used as the stack
  * for this calculation. Only 4 bytes are needed.
  */
-    /* BP_scratch 一个临时的4字节堆栈，用来获取当前代码执行的线性地址（cs,ds段都从0开始）*/
-	leal	(BP_scratch+4)(%esi), %esp
+    // BP_scratch是一个临时的4字节堆栈，用来获取当前代码执行的线性地址（没开启分页之前线性地址就是物理地址，cs,ds段都从0开始）
+	leal	(BP_scratch+4)(%esi), %esp  // 此时%esi指向的是boot_params，在pmjump.S#protected_mode_jump中赋的值
 	call	1f
-1:	popl	%ebp    /* debug: 此处获取到的值为0x10000d */
-	subl	$ rva(1b), %ebp     /* debug: 此处ebp的值为0x100000，为什么需要计算startup_32实际加载地址的偏移？因为下面要使用代码的绝对地址，好比设置在源码中定义的boot_stack(leal rva(boot_stack_end)(%ebp), %esp) */
+1:	popl	%ebp                // 然后从栈上弹出%eip的值到%ebp， debug: %ebp=0x10000d
+	subl	$ rva(1b), %ebp     // %ebp减掉label 1:相对startup_32的偏移，则可获取到startup_32的线性地址(因为此时还没有开启分页，所以程序的线性地址即物理地址)。debug: %ebp=0x100000(1M)，和我们理解的32位保护模式从1M开始完全吻合。为什么需要计算startup_32的物理地址呢？因为下面要使用物理地址来操作一些东西，比如下面的lgdt必须要使用物理地址
 
 	/* Load new GDT with the 64bit segments using 32bit descriptor */
     /*
@@ -107,11 +107,11 @@ SYM_FUNC_START(startup_32)
 	lgdt	(%eax)
 
 	/* Load segment registers with our descriptors */
-    /* 因为kernel有可能是被32-bit protocol bootloader加载的话，
+    /* 因为kernel有可能是被32-bit protocol bootloader加载的，
      * 内核从本文件开始（没有前面的header.S和protected-mode切换），
      * 所有为了安全起见，我们还得把各个段寄存器设置为我们需要的。
      */
-	movl	$__BOOT_DS, %eax
+	movl	$__BOOT_DS, %eax    // __BOOT_DS=0x18
 	movl	%eax, %ds
 	movl	%eax, %es
 	movl	%eax, %fs
@@ -119,21 +119,21 @@ SYM_FUNC_START(startup_32)
 	movl	%eax, %ss
 
 	/* Setup a stack and load CS from current GDT */
-	/* 因为下面要进行函数调用，所以必须先设置好stack。boot_stack_end就定义在本文件的下面，编译时即分配好了。 */
-	leal	rva(boot_stack_end)(%ebp), %esp
+	// 因为下面要进行函数调用，所以必须先设置好stack。boot_stack_end就定义在本文件的下面，编译时即分配好了
+	leal	rva(boot_stack_end)(%ebp), %esp // boot_stack_end在64位下为16k，32位下为4k
 
-	pushl	$__KERNEL32_CS
-	leal	rva(1f)(%ebp), %eax
+	pushl	$__KERNEL32_CS      // 0x8
+	leal	rva(1f)(%ebp), %eax // 取下面129行的label 1:地址
 	pushl	%eax
-	lretl
+	lretl                       // 上面重新加载了gdt，重新设置了段寄存器，跳一下刷新段寄存器隐藏部分
 1:
 
 	/* Setup Exception handling for SEV-ES */
-	call	startup32_load_idt
+	call	startup32_load_idt  // 开启了CONFIG_AMD_MEM_ENCRYPT才会执行，不然直接ret
 
 	/* Make sure cpu supports long mode. */
-	call	verify_cpu
-	testl	%eax, %eax	/* verify_cpu的结果通过eax返回，如果不为0则说明不支持longmode，直接挂起CPU */
+	call	verify_cpu          // 内部主要使用cpuid指令来检查CPU是否支持长模式
+	testl	%eax, %eax	        // verify_cpu的结果通过eax返回，如果不为0则说明不支持longmode，直接挂起CPU（因为当前文件是64位版本head_64.S，必须支持64位）
 	jnz	.Lno_longmode
 
 /*
@@ -146,7 +146,7 @@ SYM_FUNC_START(startup_32)
  */
 
 #ifdef CONFIG_RELOCATABLE
-	movl	%ebp, %ebx  /* 此时ebp保持的是startup_32的物理地址，即0x100000 */
+	movl	%ebp, %ebx  /* %ebp=0x100000(startup_32的物理地址) */
 
 #ifdef CONFIG_EFI_STUB
 /*
@@ -161,42 +161,38 @@ SYM_FUNC_START(startup_32)
 #endif
     /*
      * BP_kernel_alignment(%esi) 为2M对齐。
-     * decl,addl,notl,andl就是一个(m + (n - 1)) && ~(n - 1)的类似于分宿舍算法，
-     * 目的是让ebx对齐到2M的内存地址。
-     * 执行完成后，ebp包含了加载时的地址，ebx包含了内核解压缩的目标地址。
+     * decl,addl,notl,andl就是一个(m + (n - 1)) && ~(n - 1)的类似于分宿舍算法，目的是让ebx对齐到2M的内存地址。
+     * 执行完成后，%ebp包含了加载时的地址，%ebx包含了内核解压缩的目标地址。
      * CONFIG_PHYSICAL_ALIGN = 2M
-     * LOAD_PHYSICAL_ADDR为CONFIG_PHYSICAL_START 2M对齐的位置，默认为16M（可在menuconfig里配置）。
+     * LOAD_PHYSICAL_ADDR为CONFIG_PHYSICAL_START 2M对齐的位置，默认为16M（可在menuconfig里配置）
      */
-	movl	BP_kernel_alignment(%esi), %eax /* esi保存的是boot_params的地址，BP_kernel_alignment(%esi)是取kernel_alignment的地址，整条指令的作用是取kernel_alignment的值存入eax，kernel_alignment定义在arch/x86/boot/header.S中（kernel_alignment:  .long CONFIG_PHYSICAL_ALIGN），CONFIG_PHYSICAL_ALIGN可以通过make menuconfig修改，默认值0x200000（2M）。 debug: BP_kernel_alignment(%esi) 为2M */
+	movl	BP_kernel_alignment(%esi), %eax // esi保存的是boot_params的地址，BP_kernel_alignment(%esi)是取kernel_alignment的地址，整条指令的作用是取kernel_alignment的值存入eax，kernel_alignment定义在arch/x86/boot/header.S中（kernel_alignment:  .long CONFIG_PHYSICAL_ALIGN），CONFIG_PHYSICAL_ALIGN可以通过make menuconfig修改，默认值0x200000（2M）。 debug: BP_kernel_alignment(%esi) 为2M
 	decl	%eax
 	addl	%eax, %ebx
 	notl	%eax
-	andl	%eax, %ebx  /* debug: ebx本来为0x100000,2M对齐后其值为0x200000，但还是小于LOAD_PHYSICAL_ADDR(16M) */
-	cmpl	$LOAD_PHYSICAL_ADDR, %ebx   /* LOAD_PHYSICAL_ADDR定义在arch/x86/include/asm/boot.h中，define LOAD_PHYSICAL_ADDR ((CONFIG_PHYSICAL_START + (CONFIG_PHYSICAL_ALIGN - 1)) & ~(CONFIG_PHYSICAL_ALIGN - 1))，这又是个类似分宿舍的对齐算法，CONFIG_PHYSICAL_ALIGN默认为2M，CONFIG_PHYSICAL_START默认为16M，两者都可以在make menuconfig中修改。 */
-    /*  */
+	andl	%eax, %ebx  // debug: ebx本来为0x100000，2M对齐后其值为0x200000，但还是小于LOAD_PHYSICAL_ADDR(16M)
+	cmpl	$LOAD_PHYSICAL_ADDR, %ebx   // LOAD_PHYSICAL_ADDR定义在arch/x86/include/asm/boot.h中，define LOAD_PHYSICAL_ADDR ((CONFIG_PHYSICAL_START + (CONFIG_PHYSICAL_ALIGN - 1)) & ~(CONFIG_PHYSICAL_ALIGN - 1))，这又是个类似分宿舍的对齐算法，CONFIG_PHYSICAL_ALIGN默认为2M，CONFIG_PHYSICAL_START默认为16M，两者都可以在make menuconfig中修改
 	jae	1f
 #endif
-	movl	$LOAD_PHYSICAL_ADDR, %ebx   /* debug: 所以ebx最后还是被赋值为了16M，也是内核将要解压到的地方 */
+	movl	$LOAD_PHYSICAL_ADDR, %ebx   // debug: 所以ebx最后还是被赋值为了16M，也是内核将要解压到的地方
 1:
 
 	/* Target address to relocate to for decompression */
-    /* init_size为压缩的内核和解压后内核大小取max，init_size定义在arch/x86/boot/header.S中，有比较复杂的一段宏根据编译期间的数值计算出来的 */
-	addl	BP_init_size(%esi), %ebx    /* debug: BP_init_size(%esi)为0x203b000(比未压缩内核arch/x86/boot/compressed/vmlinux.bin的size稍微大一点)，ebx加之前为16M，加之后为0x303b000（48+M）*/
+    // init_size为压缩的内核和解压后内核大小取max，init_size定义在arch/x86/boot/header.S中，有比较复杂的一段宏根据编译期间的数值计算出来的
+	addl	BP_init_size(%esi), %ebx    // BP_init_size=0x260(位于第2个扇区), debug: BP_init_size(%esi)为0x2510000(37M+64k, 比未压缩内核arch/x86/boot/compressed/vmlinux.bin(size=0x23E0A48)稍大一点)，%ebx=16M，加之后为%ebx=0x3510000（53M+64k）, 注：这个大小为5.19版本编译出来的x86_64内核大小
     /*
-     * ebx - _end压缩的内核大小（.head.text+.rodata..compressed+.text+.data+.bss），则得到了压缩内核将要移动到的起始地址。
-     * 此处为什么要减掉_end，其实道理很简单：8+M的内核(中间包含压缩数据)被bootloader加载到1M，内核规定解压到16M处，未压缩的内核大小有32+M，我们准备了16M至48+M的内存为解压缓冲区。
-     * 然后我们将8+M的压缩内核从1M的地方移动到16M~48M缓冲区的末尾，大约存在在40~48M左右的内存空间，然后再解压到16M的内存处，这样就自然而然实现了原地自解压(inplace-decompression)，而不会发生覆盖现象。
-     * 此处的_end为compressed/vmlinux.lds.S中定义的_end
+     * _end为压缩后内核的大小（.head.text+.rodata..compressed+.text+.data+.bss），%ebx-_end则得到了压缩内核将要移动到的起始地址
+     * 此处为什么要减掉_end，其实道理很简单：9+M的内核(中间包含压缩数据)被bootloader加载到1M处，内核规定解压到16M处，未压缩的内核大小有37+M(BP_init_size)，我们准备了16M至43+M的内存为解压缓冲区。然后我们将9+M的压缩内核从1M的地方移动到16M~53M缓冲区的末尾，大约存在在43~53M左右的内存空间，然后再解压到16M的内存处，这样就自然而然实现了原地解压(inplace-decompression)，而不会发生覆盖现象。此处的_end为compressed/vmlinux.lds.S中定义的_end。
      */
-	subl	$ rva(_end), %ebx   /* _end为压缩内核的末尾位置，rva(_end)为压缩内核加载到1M内存后现对于startup_32的偏移，代表的就是压缩内核的大小（即8M多），减完后ebx为39M多，和推断的一致。 debug: rva(_end)为0x867000（大小和arch/x86/boot/compressed/vmlinux差不多），减完后ebx为0x27d4000 */
+	subl	$ rva(_end), %ebx   // _end为压缩内核的末尾位置，rva(_end)为压缩内核加载到1M内存后对于startup_32的偏移，代表的就是压缩内核的大小（即9M多），减完后ebx为39M多，和推断的一致。 debug: rva(_end)为$0xa0f000（大小和arch/x86/boot/compressed/vmlinux差不多），减完后%ebx为0x2b01000(43+M)
 
 /*
  * Prepare for entering 64 bit mode
  */
 
-	/* Enable PAE mode, 开启PAE-物理地址增强模式，32根地址线就变48根了，可以映射到大于4G的物理内存（虽然代码逻辑上只能访问4G大小的空间，但PAE机制可以把这个4G的空间映射到大于4G的物理内存上。），在页表项中第7位叫做PS(PageSize)，如果为1表示其对应的是一个2M的页。下面初始化Level2页表项时，0x183中的8即对应PS位。 */
+	// Enable PAE mode, 开启PAE-物理地址增强模式，32根地址线就变48根了，可以映射到大于4G的物理内存（虽然代码逻辑上只能访问4G大小的空间，但PAE机制可以把这个4G的空间映射到大于4G的物理内存上。），在页表项中第7位叫做PS(PageSize)，如果为1表示其对应的是一个2M的页。下面初始化Level2页表项时，0x183中的8即对应PS位。
 	movl	%cr4, %eax
-	orl	$X86_CR4_PAE, %eax
+	orl	$X86_CR4_PAE, %eax      // X86_CR4_PAE=0x20
 	movl	%eax, %cr4
 
  /*
@@ -226,54 +222,54 @@ SYM_FUNC_START(startup_32)
 #endif
 
 	/* Initialize Page tables to 0 */
-	leal	rva(pgtable)(%ebx), %edi    /* pgtable定位在本文件的最后面，在压缩的内核中是占空间的 */
+	leal	rva(pgtable)(%ebx), %edi        // %ebx=43+M，pgtable定义在本文件的最后面（6个4k页），在压缩的内核中是占空间的(编译时分配空间)，执行结果是%edi=0x34fc000(52+M)（这个pgtable设置完后立马启用）
 	xorl	%eax, %eax
-	movl	$(BOOT_INIT_PGT_SIZE/4), %ecx   /* BOOT_INIT_PGT_SIZE定义在arch/x86/include/asm/boot.h中（define BOOT_INIT_PGT_SIZE (6*4096)），即6个页表大小 */
-	rep	stosl   /* 此处清空的是未来压缩内核要移动到的大于39M的内存，猜测pgtable位于bzImage的最后面，而且此部分代码也是非压缩的，这样下面建立的页表将来解压缩的时候也不会被覆盖 */
+	movl	$(BOOT_INIT_PGT_SIZE/4), %ecx   // BOOT_INIT_PGT_SIZE=6*4096，即6个页表大小
+	rep	stosl                               // 此处清空的是未来压缩内核要移动到的大于43M的内存，猜测pgtable位于bzImage的最后面，而且此部分代码也是非压缩的，这样下面建立的页表将来解压缩的时候也不会被覆盖
 
-	/* Build Level 4, 对应48位地址线的47-39位 */
-	leal	rva(pgtable + 0)(%ebx), %edi
-	leal	0x1007 (%edi), %eax	/* 此处edi偏移0x1007，其中0x1000是PML4自身的大小4k，因为PML4位于pgtable的第一个4k，PML3位于pgtable的第二个4k，PML4中存的PML3页表的地址，所以这里要加0x1000。0x7是页表的falgs，表示PRESENT+RW+USER。 */
-	movl	%eax, 0(%edi)	/* 由于目前初始化的4G地址空间的early page table，所以页表项中的低32位就可以表达，下面将edx赋给高4位暂时还不清楚SEV的高级用法。 */
-	addl	%edx, 4(%edi)	/* 在页表的高32位地址中设置SEV标记，暂时不研究其作用了 */
+	/* Build Level 4, 对应48位地址线的47-39位（这里只设置了PLM4中的第0项，够用了） */
+	leal	rva(pgtable + 0)(%ebx), %edi    // %ebx=43+M，%edi=53+M
+	leal	0x1007 (%edi), %eax	            // 此处%edi偏移0x1007，其中0x1000是PML4自身的大小4k，因为PML4位于pgtable的第一个4k，PML3位于pgtable的第二个4k，PML4中存的PML3页表的地址，所以这里要加0x1000得PLM3的页表位置。0x7是页表的falgs，表示PRESENT+RW+USER
+	movl	%eax, 0(%edi)	                // 由于目前初始化的4G地址空间的early page table，所以页表项中的低32位就可以表达
+	addl	%edx, 4(%edi)	                // 默认不会开启CONFIG_AMD_MEM_ENCRYPT，%edx=0，无作用
 
-	/* Build Level 3, 开启了PAE后，在9-9-9-21的地址分段中，Lv3的4个表刚好对应31-30 2位 */
-	leal	rva(pgtable + 0x1000)(%ebx), %edi
-	leal	0x1007(%edi), %eax
-	movl	$4, %ecx	/* PML3页表也占4k大小，但只填充4项PML2的配置 */
-1:	movl	%eax, 0x00(%edi)
-	addl	%edx, 0x04(%edi)	/* SEV的高级用法，暂时不清楚作用 */
-	addl	$0x00001000, %eax	/* 每个PML2页表也占4k，填完一个要加0x1000(4k)才是下一个PML2页表的地址 */
-	addl	$8, %edi
+	/* Build Level 3, 对应48位地址线的38-30（这里只设置了PLM3页表中的4项，够用了） */
+	leal	rva(pgtable + 0x1000)(%ebx), %edi   // 加0x1000时因为pgtable的第一页被PML4使用了
+	leal	0x1007(%edi), %eax                  // 与上面同理，0x1000表示PML2在PML3的后一页
+	movl	$4, %ecx	                        // 只设置PML3页表中的4项
+1:	movl	%eax, 0x00(%edi)                    // 填充页表项的低32位
+	addl	%edx, 0x04(%edi)	                // 默认不会开启CONFIG_AMD_MEM_ENCRYPT，%edx=0，无作用
+	addl	$0x00001000, %eax	                // 每个PML2页表也占4k，填完一个要加0x1000才是下一个PML2页表的地址
+	addl	$8, %edi                            // 移到下一个PML3中的项，继续填充（64位下一个页表项占8字节）
 	decl	%ecx
 	jnz	1b
 
-	/* Build Level 2, 开启了PAE后，在9-9-9-21的地址分段中，lv2页目录的512项刚好对应29-21中间9位，剩下的21位（刚好对应2M）对应页内的offset。由于2048个页表将低4G空间平铺映射了，所以开启分页后的线性地址和没分页的物理地址一一对应，在下面启动分页机制后，代码的地址无需做任何调整即可继续执行。 */
-	leal	rva(pgtable + 0x2000)(%ebx), %edi	/* 4个PML2页表位于pgtable的第3个4k处 */
-	movl	$0x00000183, %eax	/* 0x183 flags: PRESENT + WRITE + MBZ，3 - present和write，8 - 页大小是4k还是2M（此处为1，表示2M）；1 - G位(Global)表示全局页，该页将在高速缓冲器TLB中一直保存 */
-	movl	$2048, %ecx	/* 2048个PML1页表项，每个描述2M的段，一共2048 * 2M = 4G */
-1:	movl	%eax, 0(%edi)	/* PML1页表项从地址0开始映射，所以eax的地址从$0x0000000开始，每次递增0x00200000 */
-	addl	%edx, 4(%edi)
-	addl	$0x00200000, %eax   /* 建立2048个2M页表项，最终我们拥有了一个4G表，映射了4G大小的内存。 */
-	addl	$8, %edi
+	/* Build Level 2, 对应48位地址线的29-21位（这里设置了2048个2M的PTE，需要4个页面存储）。由于2048个PTE够将低4G空间平铺映射了，所以开启分页后的线性地址和没分页的物理地址一一对应，在下面启动分页机制后，代码的地址无需做任何调整即可继续执行 */
+	leal	rva(pgtable + 0x2000)(%ebx), %edi	// 4个PML2页表位于pgtable+(2*0x1000)处
+	movl	$0x00000183, %eax	                // flags: 3 - present和write；8 - 页大小是4k还是2M（此处为1，表示2M）；1 - G位(Global)表示全局页，该页将在高速缓冲器TLB中一直保存
+	movl	$2048, %ecx	                        // 2048个PTE，2048*2M=4G
+1:	movl	%eax, 0(%edi)	                    // PTE从地址0开始映射，所以eax的地址从$0x0000000开始，每次递增0x00200000(2M)
+	addl	%edx, 4(%edi)                       // 默认不会开启CONFIG_AMD_MEM_ENCRYPT，%edx=0，无作用
+	addl	$0x00200000, %eax                   // 下一个2M页
+	addl	$8, %edi                            // 64位下每个PTE占8字节
 	decl	%ecx
 	jnz	1b
 
-	/* Enable the boot page tables */
-	leal	rva(pgtable)(%ebx), %eax
-	movl	%eax, %cr3  /* cr3中存的即为页表的地址，debug: 物理地址为0x1000ee。此处1M多一点点的early page table应该只会在内核解压之前使用，具体什么时候CR3指向新的页表，继续往后面看。 */
+	/* Enable the boot page tables, 上面我们把1个PML4、1个PML3、4个PML2都填充好，接下来就可以更新%cr3了 */
+	leal	rva(pgtable)(%ebx), %eax            // %ebx=0x2b01000, %eax=0x34fc000
+	movl	%eax, %cr3                          // cr3中存的即为PML4页表的地址(52+M)
 
-	/* Enable Long mode in EFER (Extended Feature Enable Register) */
-	movl	$MSR_EFER, %ecx /* debug: MSR_EFER值为$0xc0000080 */
-	rdmsr
-	btsl	$_EFER_LME, %eax    /* debug: _EFER_LME值为0x8 */
-	wrmsr
+	/* Enable Long mode in EFER (Extended Feature Enable Register), MSR是CPU的一组64位寄存器，可以分别通过rdmsr和wrmsr两条指令进行读和写的操作，%ecx指定端口 */
+    movl    $MSR_EFER, %ecx                     // MSR_EFER=0xc0000080（MSR寄存器端口）
+    rdmsr                                       // rdmsr会根据%ecx的值去读取MSR的内容到%eax
+    btsl    $_EFER_LME, %eax                    // _EFER_LME=0x8
+    wrmsr                                       // wrmsr会把%eax内容写入%ecx指定的MSR
 
-	/* After ldt is loaded */
+	/* After ldt is loaded, 这里加载ldt和tr不知道起什么作用？ */
 	xorl	%eax, %eax
 	lldt	%ax
-	movl    $__BOOT_TSS, %eax   /* __BOOT_TSS = 0x20 */
-	ltr	%ax
+	movl    $__BOOT_TSS, %eax                   /* __BOOT_TSS = 0x20 */
+	ltr	    %ax
 
 	/*
 	 * Setup for the jump to 64bit mode
@@ -285,7 +281,7 @@ SYM_FUNC_START(startup_32)
 	 * We place all of the values on our mini stack so lret can
 	 * used to perform that far jump.
 	 */
-	leal	rva(startup_64)(%ebp), %eax /* debug: rva(startup_64)(%ebp)值为0x100200，ebp为0x100000，startup_64的偏移为0x200，下面可以看到.org 0x200的显式位置指定 */
+	leal	rva(startup_64)(%ebp), %eax // %ebp=0x100000, rva(startup_64)(%ebp)=0x100200
 #ifdef CONFIG_EFI_MIXED
 	movl	rva(efi32_boot_args)(%ebp), %edi
 	testl	%edi, %edi
@@ -309,13 +305,13 @@ SYM_FUNC_START(startup_32)
 1:
 #endif
 	/* Check if the C-bit position is correct when SEV is active */
-	call	startup32_check_sev_cbit
+	call	startup32_check_sev_cbit    // 默认CONFIG_AMD_MEM_ENCRYPT=n，无作用
 
-	pushl	$__KERNEL_CS    /* debug: __KERNEL_CS为0x10 */
-	pushl	%eax	/* eax=startup_64，在栈中压入CS和IP，为下面的lret进入64位长模式做最后的准备。 */
+	pushl	$__KERNEL_CS        // __KERNEL_CS=0x10
+	pushl	%eax	            // %eax=startup_64，在栈中压入CS和IP，为下面的lret进入64位长模式做最后的准备
 
 	/* Enter paged protected Mode, activating Long Mode */
-	movl	$CR0_STATE, %eax
+	movl	$CR0_STATE, %eax    // CR0_STATE=X86_CR0_PE | X86_CR0_MP | X86_CR0_ET | X86_CR0_NE | X86_CR0_WP | X86_CR0_AM | X86_CR0_PG
 	movl	%eax, %cr0
 
 	/* Jump from 32bit compatibility mode into 64bit mode. */
@@ -359,7 +355,7 @@ SYM_FUNC_END(efi32_stub_entry)
 
 	.code64
 	.org 0x200
-SYM_CODE_START(startup_64)  /* debug: 物理内存地址为0x100200 */
+SYM_CODE_START(startup_64)  // debug: 物理内存地址为0x100200 (gdb中下断点时需要用物理地址b *0x100000，不然会跟arch/x86/kernel/head_64.S#startup_64冲突)
 	/*
 	 * 64bit entry is 0x200 and it is ABI so immutable!
 	 * We come here either from startup_32 or directly from a
@@ -374,7 +370,7 @@ SYM_CODE_START(startup_64)  /* debug: 物理内存地址为0x100200 */
 	cld
 	cli
 
-	/* Setup data segments. */
+	/* Setup data segments. 因为有可能内核是被64位的bootloader加载的，直接就从这里执行，所以还需要重新设置下段寄存器，确保无误 */
 	xorl	%eax, %eax
 	movl	%eax, %ds
 	movl	%eax, %es
@@ -397,7 +393,7 @@ SYM_CODE_START(startup_64)  /* debug: 物理内存地址为0x100200 */
 
 	/* Start with the delta to where the kernel will run at. */
 #ifdef CONFIG_RELOCATABLE
-	leaq	startup_32(%rip) /* - $startup_32 */, %rbp
+	leaq	startup_32(%rip) /* - $startup_32 */, %rbp  // %rbp=0x100000
 
 #ifdef CONFIG_EFI_STUB
 /*
@@ -412,7 +408,7 @@ SYM_CODE_START(startup_64)  /* debug: 物理内存地址为0x100200 */
 	subq	%rax, %rbp
 #endif
 
-	movl	BP_kernel_alignment(%rsi), %eax
+	movl	BP_kernel_alignment(%rsi), %eax // %rsi=0x13dd0(boot_params)
 	decl	%eax
 	addq	%rax, %rbp
 	notq	%rax
@@ -420,16 +416,16 @@ SYM_CODE_START(startup_64)  /* debug: 物理内存地址为0x100200 */
 	cmpq	$LOAD_PHYSICAL_ADDR, %rbp
 	jae	1f
 #endif
-	movq	$LOAD_PHYSICAL_ADDR, %rbp	/* 由于内核有可能由64bit bootloader加载，所以这里再次计算内核要解压到的位置-16M */
+	movq	$LOAD_PHYSICAL_ADDR, %rbp	// %rbp=0x1000000 (由于内核有可能由64bit bootloader加载，所以这里再次计算内核要解压到的位置16M)
 1:
 
 	/* Target address to relocate to for decompression */
-	movl	BP_init_size(%rsi), %ebx
-	subl	$ rva(_end), %ebx
-	addq	%rbp, %rbx	/* 计算要将压缩内核移动到的位置(39+M) */
+	movl	BP_init_size(%rsi), %ebx    // %rsi=0x13dd0(boot_params), %ebx=0x2510000
+	subl	$ rva(_end), %ebx           // %ebx=0x1b01000
+	addq	%rbp, %rbx	                // %rbp=0x1000000, %rbx=0x2b01000 (计算要将压缩内核移动到的位置(43+M))
 
 	/* Set up the stack */
-	leaq	rva(boot_stack_end)(%rbx), %rsp /* debug: rbp=0x1000000, rbx=0x27d4000, rsp=0x3022dc0, boot_stack_end位于压缩内核的尾部(48M多的位置) */
+	leaq	rva(boot_stack_end)(%rbx), %rsp // %rbp=0x1000000, %rbx=0x2b01000, rsp=0x34f7500, boot_stack_end位于压缩内核的尾部(52+M)
 
 	/*
 	 * At this point we are in long mode with 4-level paging enabled,
@@ -457,20 +453,20 @@ SYM_CODE_START(startup_64)  /* debug: 物理内存地址为0x100200 */
 	 */
 
 	/* Make sure we have GDT with 32-bit code segment */
-	leaq	gdt64(%rip), %rax	/* 在长模式下，可以通过rip+偏移取到数据变量的地址，很方便 */
-	addq	%rax, 2(%rax)	/* gdt64的首2个自己存放的是limit，编译的时候已经计算好。2(%rax)是存储4个字节的gdt地址 */
+	leaq	gdt64(%rip), %rax	// %rax=0xae2210(10+M), 在长模式下，可以通过rip+偏移取到数据变量的地址，很方便
+	addq	%rax, 2(%rax)	    // gdt64的首2个字节存放的是limit，编译的时候已经计算好。2(%rax)是存储4个字节的gdt地址
 	lgdt	(%rax)
 
 	/* Reload CS so IRET returns to a CS actually in the GDT */
-	pushq	$__KERNEL_CS
-	leaq	.Lon_kernel_cs(%rip), %rax
+	pushq	$__KERNEL_CS                // __KERNEL_CS=0x10
+	leaq	.Lon_kernel_cs(%rip), %rax  // %rax=0x10026f
 	pushq	%rax
-	lretq   /* debug: 物理地址0x10026d */
+	lretq
 
-.Lon_kernel_cs:
+.Lon_kernel_cs:                         // 0x10026f
 
 	pushq	%rsi
-	call	load_stage1_idt /* debug: 物理地址0x100270, paging_prepare为0x932fd0 */
+	call	load_stage1_idt
 	popq	%rsi
 
 #ifdef CONFIG_AMD_MEM_ENCRYPT
@@ -485,7 +481,7 @@ SYM_CODE_START(startup_64)  /* debug: 物理内存地址为0x100200 */
 	 * code.
 	 */
 	pushq	%rsi
-	movq	%rsi, %rdi		/* real mode address */
+	movq	%rsi, %rdi		/* real mode address, %rsi=0x13dd0(boot_params) */
 	call	sev_enable
 	popq	%rsi
 #endif
@@ -503,28 +499,28 @@ SYM_CODE_START(startup_64)  /* debug: 物理内存地址为0x100200 */
 	 * RSI holds real mode data and needs to be preserved across
 	 * this function call.
 	 */
-	pushq	%rsi
+	pushq	%rsi            // %rsi=0x13dd0(boot_params)
 	movq	%rsi, %rdi		/* real mode address */
-	call	paging_prepare  /* paging_prepare为0x9330f0 */
-	popq	%rsi    /* 物理地址0x10027f */
+	call	paging_prepare
+	popq	%rsi
 
 	/* Save the trampoline address in RCX */
-	movq	%rax, %rcx      /* debug: rcx=0x0000000000000000 */
+	movq	%rax, %rcx      // %rax=0x9d000, %rcx=0x9d000
 
 	/*
 	 * Load the address of trampoline_return() into RDI.
 	 * It will be used by the trampoline to return to the main code.
 	 */
-	leaq	trampoline_return(%rip), %rdi
+	leaq	trampoline_return(%rip), %rdi   // %rdi=0x100296(trampoline_return)
 
 	/* Switch to compatibility mode (CS.L = 0 CS.D = 1) via far return */
-	pushq	$__KERNEL32_CS  /* debug: __KERNEL32_CS=0x8 */
-	leaq	TRAMPOLINE_32BIT_CODE_OFFSET(%rax), %rax
-	pushq	%rax    /* debug: rax=0x9e000 */
-	lretq   /* debug: 物理地址0x100294 */
+	pushq	$__KERNEL32_CS                              // __KERNEL32_CS=0x8
+	leaq	TRAMPOLINE_32BIT_CODE_OFFSET(%rax), %rax    // %rax=0x9d000, TRAMPOLINE_32BIT_CODE_OFFSET=PAGE_SIZE, %rax=0x9e000
+	pushq	%rax
+	lretq                                               // 这里会跳转到trampoline_32bit_src去执行，再jmp *%rdi回到trampoline_return:来执行
 trampoline_return:
 	/* Restore the stack, the 32-bit trampoline uses its own stack */
-	leaq	rva(boot_stack_end)(%rbx), %rsp /* debug: 物理地址0x100296，rva(boot_stack_end)=0x84edc0, rsp=0x3022dc0 */
+	leaq	rva(boot_stack_end)(%rbx), %rsp             // %rbx=0x2b01000,rva(boot_stack_end)=0x9F6500, %rsp=0x34f7500(52+M)
 
 	/*
 	 * cleanup_trampoline() would restore trampoline memory.
@@ -535,10 +531,10 @@ trampoline_return:
 	 * RSI holds real mode data and needs to be preserved across
 	 * this function call.
 	 */
-	pushq	%rsi
-	leaq	rva(top_pgtable)(%rbx), %rdi    /* debug: rva(top_pgtable)=0x866000, rbx=0x27d4000, rdi=0x303a000 */
+	pushq	%rsi                            // %rsi=0x13dd0(boot_params)
+	leaq	rva(top_pgtable)(%rbx), %rdi    // %rbx=0x2b01000, 0xa0e000, %rdi=0x350f000(解压缩空间的最后4k)
 	call	cleanup_trampoline
-	popq	%rsi    /* dubug: 物理地址0x1002aa */
+	popq	%rsi
 
 	/* Zero EFLAGS */
 	pushq	$0
@@ -546,33 +542,33 @@ trampoline_return:
 
 /*
  * Copy the compressed kernel to the end of our buffer
- * where decompression in place becomes safe.
+ * where decompression in place becomes safe. 移动压缩内核到buffer的末尾
  */
-	pushq	%rsi    /* rsi保存的是boot_params地址 */
-	leaq	(_bss-8)(%rip), %rsi    /* debug:      _bss-8=0x83ab02, rip=0x1002b6,  rsi=0x93adb8 */
-	leaq	rva(_bss-8)(%rbx), %rdi /* debug: rva(_bss-8)=0x83adb8, rbx=0x27d4000, rdi=0x300edb8 */
-	movl	$(_bss - startup_32), %ecx  /* ecx=0x83adc0 (内核大小为8+M，符合我们的预期) */
+	pushq	%rsi                        // %rsi=0x13dd0(boot_params)
+	leaq	(_bss-8)(%rip), %rsi        // _bss-8=0x9e2242, rip=0x1002af, rsi=0xae24f8
+	leaq	rva(_bss-8)(%rbx), %rdi     // rva(_bss-8)=0x9e24f8, rbx=0x2b01000, rdi=0x34e34f8 */
+	movl	$(_bss - startup_32), %ecx  // %ecx=0x9e2500 (内核大小为9+M，符合我们的预期)
 	shrl	$3, %ecx
-	std
+	std                                 // 从后往前每次移动8字节（当前正在执行的此文件代码也会移动到43+M去）
 	rep	movsq
 	cld
-	popq	%rsi    /* 恢复rsi保存boot_params地址 */
+	popq	%rsi
 
 	/*
 	 * The GDT may get overwritten either during the copy we just did or
 	 * during extract_kernel below. To avoid any issues, repoint the GDTR
 	 * to the new copy of the GDT.
 	 */
-	leaq	rva(gdt64)(%rbx), %rax  /* gdt64只定义了limit和address，共享了gdt的内容。rbx为未解压内核移动后的地址（大约在39M多的位置） */
+	leaq	rva(gdt64)(%rbx), %rax  // %rbx=0x2b01000, rva(gdt64)=0x9e2210, %rax=0x34e3210 (gdt64只定义了limit和address，共享了gdt的内容)
 	leaq	rva(gdt)(%rbx), %rdx
-	movq	%rdx, 2(%rax)   /* 这里为什么要偏移2个字节的位置，因为gdt中的前2个字节定义了gdt的limit */
-	lgdt	(%rax)
+	movq	%rdx, 2(%rax)           // 这里为什么要偏移2个字节的位置，因为gdt中的前2个字节定义了gdt的limit
+	lgdt	(%rax)                  // 加载52+M处的gdt64
 
 /*
  * Jump to the relocated address.
  */
-	leaq	rva(.Lrelocated)(%rbx), %rax    /* debug: rva(.Lrelocated)=0x82d670, rax=0x3001670 */
-	jmp	*%rax   /* debug: 物理地址0x1002e7, rax=0x3001670，这条指令是在1M多地址上执行的最后一条指令，马上就要调整到移动后的未解压内核去执行了（跳转到39M多的地址去执行，其实是48M多的地方，因为Lrelocated定义在.text段，和当前代码执行的.head.text段不是同一个端，.text段编译后位于bzImage的末尾 ） */
+	leaq	rva(.Lrelocated)(%rbx), %rax    // %rbx=0x2b01000, rva(.Lrelocated)=0x9d3bc0, rax=0x34d4bc0
+	jmp	*%rax                               // debug: 物理地址0x1002e7, %rax=0x34d4bc0，这条指令是在1M多地址上执行的最后一条指令，马上就要跳转到移动后的未解压内核去执行了(52+M)
 SYM_CODE_END(startup_64)
 
 #ifdef CONFIG_EFI_STUB
@@ -590,43 +586,43 @@ SYM_FUNC_ALIAS(efi_stub_entry, efi64_stub_entry)
 
 	.text
 SYM_FUNC_START_LOCAL_NOALIGN(.Lrelocated)
-/* debug: 已经将内核从原来1M开始的8+M位置复制到了0x27d4000（39M+350kb）处，并跳转到移动后的内核代码中执行 */
+/* debug: 已经将内核从原来1M开始的9+M位置复制到了43+M处，并跳转到移动后的内核代码中继续执行（此时尚未解压） */
 /*
  * Clear BSS (stack is currently empty)
  */
-	xorl	%eax, %eax  /* debug: 物理地址0x30011b0。为什么这块的地址一下跳到了48+M处，因为从vmlinux.lds.S中可看到，.text的section是放到了压缩内核(.rodata..compressed)的后面，所以此处的.text代码差不多位于内核文件的最末端了。 */
-	leaq    _bss(%rip), %rdi    /* debug: _bss=0xdc07, rip=0x3001672, bss段和.text段挨得比较近（都在8+M压缩内核的末端）。rdi=0x300edc0 */
-	leaq    _ebss(%rip), %rcx   /* debug: _ebss=0x25c70, rip=0x3001679, 大于有1+M的bss空间。 rcx=0x3026e30 */
-	subq	%rdi, %rcx
+	xorl	%eax, %eax  // debug: 物理地址0x34d4bc0。为什么这块的地址一下跳到了52+M处，因为从vmlinux.lds.S中可看到，.text的section是放到了压缩内核(.rodata..compressed)的后面，所以此处的.text代码差不多位于内核文件的最末端了
+	leaq    _bss(%rip), %rdi    // _bss=0xe937, %rip=0x34d4bc2, %rdi=0x34e3500, bss段和.text段挨得比较近（都在9+M压缩内核的末端）
+	leaq    _ebss(%rip), %rcx   // _ebss=0x269c8, %rcx=0x34fb598
+	subq	%rdi, %rcx          // _ebss-_bss=0x18098, 有96k的bss空间
 	shrq	$3, %rcx
-	rep	stosq
+	rep	stosq                   // 清空bss
 
-	pushq	%rsi
+	pushq	%rsi                // %rsi=0x13dd0(boot_params)
 	call	load_stage2_idt
 
 	/* Pass boot_params to initialize_identity_maps() */
-	movq	(%rsp), %rdi
+	movq	(%rsp), %rdi        // %rdi是函数调用的第一个参数
 	call	initialize_identity_maps
 	popq	%rsi
 
 /*
  * Do the extraction, and jump to the new kernel..
  */
-	pushq	%rsi			/* Save the real mode argument */
-	movq	%rsi, %rdi		/* real mode address */
-	leaq	boot_heap(%rip), %rsi	/* malloc area for uncompression */
-	leaq	input_data(%rip), %rdx  /* input_data */
-	movl	input_len(%rip), %ecx	/* input_len */
-	movq	%rbp, %r8		/* output target address */
-	movl	output_len(%rip), %r9d	/* decompressed length, end of relocs */
-	call	extract_kernel		/* returns kernel location in %rax */   /* extract_kernel方法执行完后将解压内核的起始地址通过rax返回，接下来就调整到这个位置去继续执行代码。debug: 物理地址0x3001201 */
+	pushq	%rsi			/* Save the real mode argument, %rsi=0x13dd0(boot_params) */
+	movq	%rsi, %rdi		/* real mode address */ // %rdi=0x13dd0, 接下来为extract_kernel()准备6个参数：%rdi, %rsi, %rdx, %ecx, %r8, %r9d (r9d表示r9的低32位)
+	leaq	boot_heap(%rip), %rsi	/* malloc area for uncompression, %rsi=0x34e3500 */
+	leaq	input_data(%rip), %rdx  /* %rdx=0x2b0140d. input_data, input_len, output_len都是由arch/x86/boot/compressed/mkpiggy.c动态生成一个piggy.S汇编文件生成的，可通过piggy.S来查看。5.19版本debug模式下input_len=0x9D37B0, output_len=0x248EF48 */
+	movl	input_len(%rip), %ecx	/* input_len, %ecx=0x9d37b0(9+M) */
+	movq	%rbp, %r8		        /* output target address, %r8=0x1000000. rbp在上面的423行被赋值为LOAD_PHYSICAL_ADDR，而LOAD_PHYSICAL_ADDR又是在boot.h中根据CONFIG_PHYSICAL_START配置按2M取整计算出来的（#define LOAD_PHYSICAL_ADDR ((CONFIG_PHYSICAL_START + (CONFIG_PHYSICAL_ALIGN - 1)) & ~(CONFIG_PHYSICAL_ALIGN - 1))），CONFIG_PHYSICAL_START默认被定位为了0x1000000(16M) */
+	movl	output_len(%rip), %r9d	/* %r9d=0x248ef48. decompressed length, end of relocs*/
+	call	extract_kernel		    /* returns kernel location in %rax, extract_kernel方法执行完后将解压内核的起始地址通过rax返回，接下来就调整到这个位置去继续执行代码。%rax=0x1000000 */
 
-	popq	%rsi    /* rsi继续指向boot_params */
+	popq	%rsi                    /* %rsi=0x13dd0(boot_params) */
 
 /*
  * Jump to the decompressed kernel.
  */
-	jmp	*%rax   /* debug: 物理地址0x30016c7，rax=0x1000000 (如果启动命令行参数带nokaslr则rax=0x1000000(16M)，否则位置就随机了，好比在一次调试中rax=0x3400000[52M])，下面就跳转到arch/x86/kernel/head_64.S去执行了。 */
+	jmp	*%rax                       /* debug: 物理地址0x34d4c12，%rax=0x1000000 (如果启动命令行参数带nokaslr则rax=0x1000000(16M)，否则位置就随机了)，下面就跳转到arch/x86/kernel/head_64.S去执行了。 */
 SYM_FUNC_END(.Lrelocated)
 
 	.code32
@@ -639,7 +635,7 @@ SYM_FUNC_END(.Lrelocated)
  */
 SYM_CODE_START(trampoline_32bit_src)
 	/* Set up data and stack segments */
-	movl	$__KERNEL_DS, %eax
+	movl	$__KERNEL_DS, %eax      // __KERNEL_DS=0x18
 	movl	%eax, %ds
 	movl	%eax, %ss
 
@@ -722,7 +718,7 @@ SYM_CODE_END(trampoline_32bit_src)
 	.code64
 SYM_FUNC_START_LOCAL_NOALIGN(.Lpaging_enabled)
 	/* Return from the trampoline */
-	jmp	*%rdi
+	jmp	*%rdi                   // %rdi中存的是trampoline_return: label的地址
 SYM_FUNC_END(.Lpaging_enabled)
 
 	/*
@@ -900,7 +896,7 @@ SYM_FUNC_START(startup32_set_idt_entry)
 
 	/* Build IDT entry, lower 4 bytes */
 	movl    %eax, %edx
-	andl    $0x0000ffff, %edx	# Target code segment offset [15:0]
+	andl    $0x0000ffff, %edx	    # Target code segment offset [15:0]
 	movl    $__KERNEL32_CS, %ecx	# Target code segment selector
 	shl     $16, %ecx
 	orl     %ecx, %edx

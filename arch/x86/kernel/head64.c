@@ -60,9 +60,9 @@ EXPORT_SYMBOL(ptrs_per_p4d);
 #ifdef CONFIG_DYNAMIC_MEMORY_LAYOUT
 unsigned long page_offset_base __ro_after_init = __PAGE_OFFSET_BASE_L4; /* 0xffff888000000000UL */
 EXPORT_SYMBOL(page_offset_base);
-unsigned long vmalloc_base __ro_after_init = __VMALLOC_BASE_L4; /* 0xffffc90000000000UL */
+unsigned long vmalloc_base __ro_after_init = __VMALLOC_BASE_L4;         /* 0xffffc90000000000UL */
 EXPORT_SYMBOL(vmalloc_base);
-unsigned long vmemmap_base __ro_after_init = __VMEMMAP_BASE_L4; /* 0xffffea0000000000UL */
+unsigned long vmemmap_base __ro_after_init = __VMEMMAP_BASE_L4;         /* 0xffffea0000000000UL */
 EXPORT_SYMBOL(vmemmap_base);
 #endif
 
@@ -88,7 +88,7 @@ static struct desc_ptr startup_gdt_descr = {
 
 static void __head *fixup_pointer(void *ptr, unsigned long physaddr)	/* 计算ptr的物理地址，ptr是一个大于0xffffffff81000000的高地址 */
 {
-	return ptr - (void *)_text + (void *)physaddr;	/* _text为0xffffffff81000000，physaddr为16M */
+	return ptr - (void *)_text + (void *)physaddr;	                    /* _text为0xffffffff81000000，physaddr为16M */
 }
 
 static unsigned long __head *fixup_long(void *ptr, unsigned long physaddr)
@@ -114,9 +114,9 @@ static bool __head check_la57_support(unsigned long physaddr)
 	*fixup_int(&__pgtable_l5_enabled, physaddr) = 1;
 	*fixup_int(&pgdir_shift, physaddr) = 48;
 	*fixup_int(&ptrs_per_p4d, physaddr) = 512;
-	*fixup_long(&page_offset_base, physaddr) = __PAGE_OFFSET_BASE_L5; /* 0xff11000000000000UL */
-	*fixup_long(&vmalloc_base, physaddr) = __VMALLOC_BASE_L5; /* 0xffa0000000000000UL */
-	*fixup_long(&vmemmap_base, physaddr) = __VMEMMAP_BASE_L5; /* 0xffd4000000000000UL */
+	*fixup_long(&page_offset_base, physaddr) = __PAGE_OFFSET_BASE_L5;   /* 0xff11000000000000UL */
+	*fixup_long(&vmalloc_base, physaddr) = __VMALLOC_BASE_L5;           /* 0xffa0000000000000UL */
+	*fixup_long(&vmemmap_base, physaddr) = __VMEMMAP_BASE_L5;           /* 0xffd4000000000000UL */
 
 	return true;
 }
@@ -190,47 +190,47 @@ unsigned long __attribute__((optimize("O0"))) __head __startup_64(unsigned long 
 	int i;
 	unsigned int *next_pgt_ptr;
 
-	la57 = check_la57_support(physaddr);
+	la57 = check_la57_support(physaddr);    // 虽然内核支持CONFIG_X86_5LEVEL=y, 但cr4 bit12不支持, la57=false
 
 	/* Is the address too large? */
-	if (physaddr >> MAX_PHYSMEM_BITS)
-		for (;;);
+	if (physaddr >> MAX_PHYSMEM_BITS)       // MAX_PHYSMEM_BITS=46, physaddr=0x1000000
+		for (;;);                           // 编译之后就2个字节：0x10002af   jmp 0x10002af
 
 	/*
 	 * Compute the delta between the address I am compiled to run at
 	 * and the address I am actually running at.
 	 */
-	load_delta = physaddr - (unsigned long)(_text - __START_KERNEL_map);
+	load_delta = physaddr - (unsigned long)(_text - __START_KERNEL_map);    // physaddr=0x1000000, _text=0xffffffff81000000, __START_KERNEL_map=0xffffffff80000000, 即: 0x1000000 - (0xffffffff81000000 - 0xffffffff80000000) = 0(load_delta=0)
 
 	/* Is the address not 2M aligned? */
 	if (load_delta & ~PMD_PAGE_MASK)
 		for (;;);
 
 	/* Include the SME encryption mask in the fixup value */
-	load_delta += sme_get_me_mask();
+	load_delta += sme_get_me_mask();    // load_delta=0
 
 	/* Fixup the physical addresses in the page table */
 
-	pgd = fixup_pointer(&early_top_pgt, physaddr);
-	p = pgd + pgd_index(__START_KERNEL_map); /* 根据__START_KERNEL_map计算得出511，因为后面要对early_top_pgt[511]赋值 */
-	if (la57)
+	pgd = fixup_pointer(&early_top_pgt, physaddr);  // early_top_pgt=0xffffffff82ed4000(定义在arch/x86/kernel/head_64.S数据段中), physaddr=0x1000000, pgd=0x2ed4000
+	p = pgd + pgd_index(__START_KERNEL_map);        // pgd_index(__START_KERNEL_map)=511, 注意gpd是一个指向顶级页表的指针，pgd+511则会指向顶级页表的第511项(即最后一项)
+	if (la57)   // la57=false
 		*p = (unsigned long)level4_kernel_pgt;
 	else
-		*p = (unsigned long)level3_kernel_pgt;  /* 给early_top_pgt[511]赋值 */
-	*p += _PAGE_TABLE_NOENC - __START_KERNEL_map + load_delta; /* 设置页目录项属性，arch/x86/include/asm/pgtable_types.h:195:#define _PAGE_TABLE_NOENC       (__PP|__RW|_USR|___A|   0|___D|   0|   0) */
+		*p = (unsigned long)level3_kernel_pgt;                  // 由于没有la57, 则pgd就是early_top_pgt, 则early_top_pgt[511]=level3_kernel_pgt. 注意，这里只填充了511这一项，其它的项会在发生缺页中断的时候由early_make_pgtable()来动态填充
+	*p += _PAGE_TABLE_NOENC - __START_KERNEL_map + load_delta;  // 设置页目录项属性: _PAGE_TABLE_NOENC=(__PP|__RW|_USR|___A|   0|___D|   0|   0)
 
-	if (la57) {
+	if (la57) { // la57=false
 		p4d = fixup_pointer(&level4_kernel_pgt, physaddr);
 		p4d[511] += load_delta;
 	}
 
-	pud = fixup_pointer(&level3_kernel_pgt, physaddr);
-	pud[510] += load_delta;
-	pud[511] += load_delta;
+	pud = fixup_pointer(&level3_kernel_pgt, physaddr);          // level3_kernel_pgt的前510项都为空，510和511项在编译的时候就确定了(定义在arch/x86/kernel/head_64.S中)
+	pud[510] += load_delta;                                     // load_delta=0, pud[510]对应level2_kernel_pgt
+	pud[511] += load_delta;                                     // load_delta=0, pud[510]对应level2_fixmap_pgt
 
 	pmd = fixup_pointer(level2_fixmap_pgt, physaddr);
-	for (i = FIXMAP_PMD_TOP; i > FIXMAP_PMD_TOP - FIXMAP_PMD_NUM; i--)
-		pmd[i] += load_delta;
+	for (i = FIXMAP_PMD_TOP; i > FIXMAP_PMD_TOP - FIXMAP_PMD_NUM; i--)  // FIXMAP_PMD_TOP=507(level2_fixmap_pgt顶部4项保留不用)
+		pmd[i] += load_delta;                                           // load_delta=0
 
 	/*
 	 * Set up the identity mapping for the switchover.  These
@@ -298,17 +298,17 @@ unsigned long __attribute__((optimize("O0"))) __head __startup_64(unsigned long 
 	pmd = fixup_pointer(level2_kernel_pgt, physaddr);
 
 	/* invalidate pages before the kernel image */
-	for (i = 0; i < pmd_index((unsigned long)_text); i++)
-		pmd[i] &= ~_PAGE_PRESENT;
+	for (i = 0; i < pmd_index((unsigned long)_text); i++)               // pmd_index((unsigned long)_text)=8
+		pmd[i] &= ~_PAGE_PRESENT;                                       // 将_text:0xFFFFFFFF81000000以下对应的页表项都设置为P=0
 
 	/* fixup pages that are part of the kernel image */
 	for (; i <= pmd_index((unsigned long)_end); i++)
-		if (pmd[i] & _PAGE_PRESENT)
+		if (pmd[i] & _PAGE_PRESENT)                                     // 将_text ~ _end之间对应的页表项都设置为P=1
 			pmd[i] += load_delta;
 
 	/* invalidate pages after the kernel image */
 	for (; i < PTRS_PER_PMD; i++)
-		pmd[i] &= ~_PAGE_PRESENT;
+		pmd[i] &= ~_PAGE_PRESENT;                                       // 在把_end之后的页表项也设置为P=0
 
 	/*
 	 * Fixup phys_base - remove the memory encryption mask to obtain
@@ -436,14 +436,14 @@ void __init clear_bss(void)
 
 static unsigned long get_cmd_line_ptr(void)
 {
-	unsigned long cmd_line_ptr = boot_params.hdr.cmd_line_ptr;
+	unsigned long cmd_line_ptr = boot_params.hdr.cmd_line_ptr;      // cmd_line_ptr为cmd_line_ptr的低32位地址
 
-	cmd_line_ptr |= (u64)boot_params.ext_cmd_line_ptr << 32;
+	cmd_line_ptr |= (u64)boot_params.ext_cmd_line_ptr << 32;        // ext_cmd_line_ptr为cmd_line_ptr的高32位地址
 
 	return cmd_line_ptr;
 }
 
-static void __init copy_bootdata(char *real_mode_data)
+static void __init copy_bootdata(char *real_mode_data)              // __init修饰符表面这个函数只会在初始化的时候用，后面会清除掉的
 {
 	char * command_line;
 	unsigned long cmd_line_ptr;
@@ -454,12 +454,12 @@ static void __init copy_bootdata(char *real_mode_data)
 	 */
 	sme_map_bootdata(real_mode_data);
 
-	memcpy(&boot_params, real_mode_data, sizeof(boot_params));
+	memcpy(&boot_params, real_mode_data, sizeof(boot_params));      // sizeof(boot_params)=0x1000
 	sanitize_boot_params(&boot_params);
 	cmd_line_ptr = get_cmd_line_ptr();
 	if (cmd_line_ptr) {
 		command_line = __va(cmd_line_ptr);
-		memcpy(boot_command_line, command_line, COMMAND_LINE_SIZE);
+		memcpy(boot_command_line, command_line, COMMAND_LINE_SIZE); // COMMAND_LINE_SIZE=2048
 	}
 
 	/*
@@ -519,12 +519,12 @@ asmlinkage __visible void __init x86_64_start_kernel(char * real_mode_data)
 	 */
 	__native_tlb_flush_global(this_cpu_read(cpu_tlbstate.cr4));
 
-	idt_setup_early_handler();
+	idt_setup_early_handler();              // 设置early中断处理函数do_early_exception(), 其中主要处理了缺页中断X86_TRAP_PF等
 
 	/* Needed before cc_platform_has() can be used for TDX */
 	tdx_early_init();
 
-	copy_bootdata(__va(real_mode_data));
+	copy_bootdata(__va(real_mode_data));    // __va为跟进物理地址求虚拟地址(virtual address), __va=((void *)((unsigned long)(x)+PAGE_OFFSET)), PAGE_OFFSET=0xffff888000000000, arg1=0xffff888000013dd0. 但我们全面分析early_top_pgt时发现其只初始化了early_top_pgt[511]项，而0xffff888000013dd0对应的应该是early_top_pgt[273]，我们没有设置此项页表呀，这里能直接使用吗？对，我们能直接使用，不过此时会触发缺页中断处理函数early_make_pgtable()（在上面2行的idt_setup_early_handler()中设置的），这样就会自动填充early_top_pgt[273]。在gdb中debug也可以看出来：{{pgd = 0} <repeats 273 times>, {pgd = 49111139}, {pgd = 0} <repeats 237 times>, {pgd = 42012775}}
 
 	/*
 	 * Load microcode early on BSP.
@@ -625,8 +625,8 @@ void early_setup_idt(void)
 void __head startup_64_setup_env(unsigned long physbase)
 {
 	/* Load GDT */
-	startup_gdt_descr.address = (unsigned long)fixup_pointer(startup_gdt, physbase);	/* physbase由rdi传入进来，值为16M，此处计算startup_gdt的物理地址（startup_gdt为0xffffffff82416040） */
-	native_load_gdt(&startup_gdt_descr);	/* native_load_gdt定义在arch/x86/include/asm/desc.h中的inline函数，就简单的一条lgdt指令。startup_gdt_descr的地址为0xffffffff8100022c，对其取地址就相对于startup_gdt_descr($rip)操作，debug可获得对应的指令为：lgdt   0x1415a12(%rip)，0x1415a12(%rip)的计算结果为0x2416030，即&startup_gdt_descr的结果为0x2416030，目前线性地址和物理地址是完全对应的。*/
+	startup_gdt_descr.address = (unsigned long)fixup_pointer(startup_gdt, physbase);	// startup_gdt=0xffffffff82816040, physbase=0x1000000, 此处计算startup_gdt的物理地址为0x2816040
+	native_load_gdt(&startup_gdt_descr);	// startup_gdt_descr=0xffffffff82816030，&startup_gdt_descr=0x1815729(%rip)=0x2816030. lgdt 0x2816030就把全局gdt表切换到了startup_gdt去了
 
 	/* New GDT is live - reload data segment registers */
 	asm volatile("movl %%eax, %%ds\n"
