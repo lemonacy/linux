@@ -635,7 +635,7 @@ SYM_INNER_LABEL(swapgs_restore_regs_and_return_to_usermode, SYM_L_GLOBAL)
 	movq	PER_CPU_VAR(cpu_tss_rw + TSS_sp0), %rsp
 	UNWIND_HINT_EMPTY
 
-	/* Copy the IRET frame to the trampoline stack. */
+	/* Copy the IRET frame to the trampoline stack. */ // 这里为什么不直接使用pt_regs栈顶的rip、cs、eflags、rsp、ss呢？猜测这里的rip有可能指向的不是真正的elf_entry，而是内核中一段跳板函数，跳板函数会把pt_regs.rip更新为真正的elf_entry，然后再iret一次，需要继续分析。[2024-01-17更新]又仔细过了一次run_init_process()->kernel_execve()后，发现如果是执行新的ELF文件，此处的rip就是elf_entry。突然想到本swapgs_restore_regs_and_return_to_usermode不仅仅只会从ret_from_fork调用，还有其它地方也会调用（其实任何系统调用返回都会走到这里来，请查看本文件上面的entry_SYSCALL_64），所以这里的trampoline机制应该是干别的用的，暂不深究了
 	pushq	6*8(%rdi)	/* SS */
 	pushq	5*8(%rdi)	/* RSP */
 	pushq	4*8(%rdi)	/* EFLAGS */
