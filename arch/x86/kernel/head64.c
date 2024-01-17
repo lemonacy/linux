@@ -471,7 +471,7 @@ static void __init copy_bootdata(char *real_mode_data)              // __init修
 	sme_unmap_bootdata(real_mode_data);
 }
 
-asmlinkage __visible void __init x86_64_start_kernel(char * real_mode_data)
+asmlinkage __visible void __init x86_64_start_kernel(char * real_mode_data) // 0xffffffff82a57558
 {
 	/*
 	 * Build-time sanity checks on the kernel image and module
@@ -553,7 +553,7 @@ void __init x86_64_start_reservations(char *real_mode_data)
 		break;
 	}
 
-	start_kernel();	/* goto init/main.c#start_kernel() */
+	start_kernel();	/* goto init/main.c#start_kernel(), 0xffffffff82e74cf3 */
 }
 
 /*

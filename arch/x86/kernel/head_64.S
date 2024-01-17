@@ -569,22 +569,22 @@ SYM_DATA(early_recursion_flag, .long 0)
 
 	.data
 
-#if defined(CONFIG_XEN_PV) || defined(CONFIG_PVH)
-SYM_DATA_START_PTI_ALIGNED(init_top_pgt)    // init_top_pgt默认不会被用到
-	.quad   level3_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC /* 第0项 */
-	.org    init_top_pgt + L4_PAGE_OFFSET*8, 0
-	.quad   level3_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC /* 第273项，映射到内核态地址空间开始处0xffff888000000000 */
+#if defined(CONFIG_XEN_PV) || defined(CONFIG_PVH)   // 在Debug模式下，我们开启了CONFIG_PVH=y
+SYM_DATA_START_PTI_ALIGNED(init_top_pgt)            // init_top_pgt在哪里加载的？从代码上没有很直观加载的地方，通过gdb debug才发现是在start_kernel()->arch/x86/kernel/setup.c#setup_arch()->arch/x86/mm/init.c#load_cr3(swapper_pg_dir)中加载的(加载的是swapper_pg_dir即init_top_gpt)
+	.quad   level3_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC // 第0项，线性地址0x0000000000000000，映射到首1G的物理地址(identity mapping)
+	.org    init_top_pgt + L4_PAGE_OFFSET*8, 0      // L4_PAGE_OFFSET=273
+	.quad   level3_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC // 第273项，线性地址0xffff888000000000，同样也映射到物理地址0x0000000000000000(direct mapping)
 	.org    init_top_pgt + L4_START_KERNEL*8, 0
 	/* (2^48-(2*1024*1024*1024))/(2^39) = 511 */
-	.quad   level3_kernel_pgt - __START_KERNEL_map + _PAGE_TABLE_NOENC  /* 第511项，映射到0xffffffff80000000处 */
+	.quad   level3_kernel_pgt - __START_KERNEL_map + _PAGE_TABLE_NOENC  // 第511项，线性地址0xffffffff80000000处，同样也映射到物理地址0x0000000000000000(kernel mapping)
 	.fill	PTI_USER_PGD_FILL,8,0
 SYM_DATA_END(init_top_pgt)
 
 SYM_DATA_START_PAGE_ALIGNED(level3_ident_pgt)
-	.quad	level2_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC
+	.quad	level2_ident_pgt - __START_KERNEL_map + _KERNPG_TABLE_NOENC // 仅level3_ident_pgt[0]=level2_ident_pgt就够映射1G空间了
 	.fill	511, 8, 0
 SYM_DATA_END(level3_ident_pgt)
-SYM_DATA_START_PAGE_ALIGNED(level2_ident_pgt)                           /* init_top_pgt的第0项和273项都映射到物理地址的首1G */
+SYM_DATA_START_PAGE_ALIGNED(level2_ident_pgt)                           // init_top_pgt的第0项和273项都映射到物理地址的首1G
 	/*
 	 * Since I easily can, map the first 1G.
 	 * Don't set NX because code runs from these pages.
@@ -593,7 +593,7 @@ SYM_DATA_START_PAGE_ALIGNED(level2_ident_pgt)                           /* init_
 	 * the CPU supports it or it is enabled.  But,
 	 * the CPU should ignore the bit.
 	 */
-	PMDS(0, __PAGE_KERNEL_IDENT_LARGE_EXEC, PTRS_PER_PMD)               /* PTRS_PER_PMD=512 */
+	PMDS(0, __PAGE_KERNEL_IDENT_LARGE_EXEC, PTRS_PER_PMD)               // PTRS_PER_PMD=512, 页大小2M, 512*2M=1G
 SYM_DATA_END(level2_ident_pgt)
 #else
 SYM_DATA_START_PTI_ALIGNED(init_top_pgt)
@@ -635,7 +635,7 @@ SYM_DATA_END(level2_kernel_pgt)
 SYM_DATA_START_PAGE_ALIGNED(level2_fixmap_pgt)                              // level2_fixmap_pgt会继续填充level1_fixmap_pgt对应的页表项，level1_fixmap_pgt映射的是4k页
 	.fill	(512 - 4 - FIXMAP_PMD_NUM),8,0                                  // FIXMAP_PMD_NUM=2, 用0填充前506项
 	pgtno = 0
-	.rept (FIXMAP_PMD_NUM)                                                  // 填充2项level2_fixmap_pgt[506]和level2_fixmap_pgt[507], PAGE_SHIFT=12
+	.rept (FIXMAP_PMD_NUM)                                                  // 填充2项level2_fixmap_pgt[506]和level2_fixmap_pgt[507], PAGE_SHIFT=12. fixmap即表示固定映射，此两项映射地址范围0xFFFFFFFFFF400000~0xFFFFFFFFFF800000(共4M)，对应vsyscall函数地址。（注意：在固定映射区中虚拟地址是固定的，而被映射的物理地址是可以改变的）
 	.quad level1_fixmap_pgt + (pgtno << PAGE_SHIFT) - __START_KERNEL_map \
 		+ _PAGE_TABLE_NOENC;
 	pgtno = pgtno + 1
