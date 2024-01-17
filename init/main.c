@@ -721,9 +721,9 @@ noinline void __ref rest_init(void)
 	 * The boot idle thread must execute schedule()
 	 * at least once to get things moving:
 	 */
-	schedule_preempt_disabled();
+	schedule_preempt_disabled();        // 开启schedule()，kthreadd和kernel_init都开始执行(kthreadd先执行，在kthreadd中又会调用schedule()来让出CPU给kernel_init执行)
 	/* Call into cpu_idle with preempt disabled */
-	cpu_startup_entry(CPUHP_ONLINE);
+	cpu_startup_entry(CPUHP_ONLINE);    // 执行一会子线程后，再切换到此(task0)来执行
 }
 
 /* Check for early params. */
@@ -948,7 +948,7 @@ asmlinkage __visible void __init __no_sanitize_address start_kernel(void)
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	early_security_init();
-	setup_arch(&command_line); /* 设置特定架构的信息，同时初始化memblock。setup_arch后，memblock.reserved的内存有18个region，共占32M+389K+300。 */
+	setup_arch(&command_line); /* 定义在arch/x86/kernel/setup.c#setup_arch(). 设置特定架构的信息，同时初始化memblock。setup_arch后，memblock.reserved的内存有18个region，共占32M+389K+300。 */
 	setup_boot_config();
 	setup_command_line(command_line);
 	setup_nr_cpu_ids();

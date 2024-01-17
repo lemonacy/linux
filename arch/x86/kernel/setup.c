@@ -861,7 +861,7 @@ void __init setup_arch(char **cmdline_p)
 	}
 #endif
 
-	x86_init.oem.arch_setup();
+	x86_init.oem.arch_setup();      // 定义在arch/x86/kernel/x86_init.c中，空函数
 
 	/*
 	 * Do some memory reservations *before* memory is added to memblock, so
