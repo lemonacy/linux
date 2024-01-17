@@ -18,7 +18,7 @@ __PAGE_ALIGNED_DATA
 __vsyscall_page:
 
 	mov $__NR_gettimeofday, %rax
-	syscall
+	syscall                             // cmd_line: vsyscall=native时vsyscall实际上还是会调用native syscall的, vsyscall=emulate时就会去走模拟的syscall
 	ret
 	int3
 

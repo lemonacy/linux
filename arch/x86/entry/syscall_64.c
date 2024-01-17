@@ -8,7 +8,7 @@
 #include <asm/syscall.h>
 
 #define __SYSCALL(nr, sym) extern long __x64_##sym(const struct pt_regs *);
-#include <asm/syscalls_64.h>
+#include <asm/syscalls_64.h>    // 这个文件是编译时生成的arch/x86/include/generated/asm/syscalls_64.h，内容为__SYSCALL(0, sys_read)等
 #undef __SYSCALL
 
 #define __SYSCALL(nr, sym) __x64_##sym,

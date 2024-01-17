@@ -374,7 +374,7 @@ void __init set_vsyscall_pgtable_user_bits(pgd_t *root)
 	set_pmd(pmd, __pmd(pmd_val(*pmd) | _PAGE_USER));
 }
 
-void __init map_vsyscall(void)
+void __init map_vsyscall(void)  // 在start_kernel()->setup_arch()中调用
 {
 	extern char __vsyscall_page;
 	unsigned long physaddr_vsyscall = __pa_symbol(&__vsyscall_page);
@@ -384,7 +384,7 @@ void __init map_vsyscall(void)
 	 * execute-only mode, there is no PTE at all backing the vsyscall
 	 * page.
 	 */
-	if (vsyscall_mode == EMULATE) {
+	if (vsyscall_mode == EMULATE) { // vsyscall_mode是上面通过early_param机制来初始化的，early_param定义的逻辑是在start_kernel中调用的
 		__set_fixmap(VSYSCALL_PAGE, physaddr_vsyscall,
 			     PAGE_KERNEL_VVAR);
 		set_vsyscall_pgtable_user_bits(swapper_pg_dir);

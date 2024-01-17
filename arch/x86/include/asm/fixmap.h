@@ -56,7 +56,7 @@ extern unsigned long __FIXADDR_TOP;
 #define FIXADDR_TOP	((unsigned long)__FIXADDR_TOP)
 #else
 #define FIXADDR_TOP	(round_up(VSYSCALL_ADDR + PAGE_SIZE, 1<<PMD_SHIFT) - \
-			 PAGE_SIZE) /*VSYSCALL_ADDR=0xffffffffff600000*/
+			 PAGE_SIZE) // VSYSCALL_ADDR=0xffffffffff600000, PAGE_SIZE=0x1000, PMD_SHIFT=21(2M), FIXADDR_TOP=0xffffffffff7ff000, 距地址空间末尾8M+4K
 #endif
 
 /*
@@ -83,7 +83,7 @@ enum fixed_addresses { /* 这个枚举定义的是高地址到低地址固定虚
 	FIX_HOLE,
 #else
 #ifdef CONFIG_X86_VSYSCALL_EMULATION
-	VSYSCALL_PAGE = (FIXADDR_TOP - VSYSCALL_ADDR) >> PAGE_SHIFT,
+	VSYSCALL_PAGE = (FIXADDR_TOP - VSYSCALL_ADDR) >> PAGE_SHIFT,    // (7M+1020K-6M)>>4K=256+255=511，注意：固定虚拟地址不仅仅只给vsyscall用，vsyscall仅仅是其中的一项而已
 #endif
 #endif
 	FIX_DBGP_BASE,
@@ -147,7 +147,7 @@ enum fixed_addresses { /* 这个枚举定义的是高地址到低地址固定虚
 
 extern void reserve_top_address(unsigned long reserve);
 
-#define FIXADDR_SIZE		(__end_of_permanent_fixed_addresses << PAGE_SHIFT)
+#define FIXADDR_SIZE		(__end_of_permanent_fixed_addresses << PAGE_SHIFT)  // 左移PAGE_SHIFT位，这里也体现了一项占一页
 #define FIXADDR_START		(FIXADDR_TOP - FIXADDR_SIZE)
 #define FIXADDR_TOT_SIZE	(__end_of_fixed_addresses << PAGE_SHIFT)
 #define FIXADDR_TOT_START	(FIXADDR_TOP - FIXADDR_TOT_SIZE)
