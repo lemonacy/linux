@@ -412,7 +412,7 @@ void __qdisc_run(struct Qdisc *q)
 	int quota = dev_tx_weight;
 	int packets;
 
-	while (qdisc_restart(q, &packets)) {
+	while (qdisc_restart(q, &packets)) {    // 真正的操作在这个函数里面
 		quota -= packets;
 		if (quota <= 0) {
 			if (q->flags & TCQ_F_NOLOCK)

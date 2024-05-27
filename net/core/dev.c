@@ -5323,7 +5323,7 @@ another_round:
 	if (pfmemalloc)
 		goto skip_taps;
 
-	list_for_each_entry_rcu(ptype, &ptype_all, list) {
+	list_for_each_entry_rcu(ptype, &ptype_all, list) {  //pcap逻辑，这里会将数据送入抓包点。tcpdump就是从这个入口获取包的
 		if (pt_prev)
 			ret = deliver_skb(skb, pt_prev, orig_dev);
 		pt_prev = ptype;

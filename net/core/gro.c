@@ -635,7 +635,7 @@ gro_result_t napi_gro_receive(struct napi_struct *napi, struct sk_buff *skb)
 
 	skb_gro_reset_offset(skb, 0);
 
-	ret = napi_skb_finish(napi, skb, dev_gro_receive(napi, skb));
+	ret = napi_skb_finish(napi, skb, dev_gro_receive(napi, skb));   // dev_gro_receive函数代表的是网卡GRO特性，可以简单理解成把相关的小包合并成一个大包就行，目的是减少传送给网络栈的包数，这有助于减少CPU的使用量。重点是napi_skb_finish函数，它负责将数据包传递给上传协议栈处理
 	trace_napi_gro_receive_exit(ret);
 
 	return ret;
