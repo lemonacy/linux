@@ -314,7 +314,7 @@ SYM_FUNC_START(startup_32)
 	movl	$CR0_STATE, %eax    // CR0_STATE=X86_CR0_PE | X86_CR0_MP | X86_CR0_ET | X86_CR0_NE | X86_CR0_WP | X86_CR0_AM | X86_CR0_PG
 	movl	%eax, %cr0
 
-	/* Jump from 32bit compatibility mode into 64bit mode. */
+	/* Jump from 32bit compatibility mode into 64bit mode. 开启Long Mode后，通过lret正式进入64位模式 */
 	lret
 SYM_FUNC_END(startup_32)
 
