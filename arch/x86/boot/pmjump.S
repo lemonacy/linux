@@ -38,7 +38,7 @@ SYM_FUNC_START_NOALIGN(protected_mode_jump)
 	orb	$X86_CR0_PE, %dl	# Protected mode
 	movl	%edx, %cr0
 
-	# Transition to 32-bit mode
+	# Transition to 32-bit mode, 从16位模式进入32位模式
 	.byte	0x66, 0xea		# ljmpl opcode
 2:	.long	.Lin_pm32		# offset
 	.word	__BOOT_CS		# segment
