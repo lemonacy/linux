@@ -1575,7 +1575,7 @@ int __udp_enqueue_schedule_skb(struct sock *sk, struct sk_buff *skb)
 	 */
 	sock_skb_set_dropcount(sk, skb);
 
-	__skb_queue_tail(list, skb);
+	__skb_queue_tail(list, skb);    // void __skb_queue_tail, 将skb加入到sock的接收队列sk_receive_queue，接下来就由recvfrom去读取数据了
 	spin_unlock(&list->lock);
 
 	if (!sock_flag(sk, SOCK_DEAD))

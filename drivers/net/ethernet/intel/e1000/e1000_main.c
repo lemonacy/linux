@@ -3798,9 +3798,9 @@ static int e1000_clean(struct napi_struct *napi, int budget)
 						     napi);
 	int tx_clean_complete = 0, work_done = 0;
 
-	tx_clean_complete = e1000_clean_tx_irq(adapter, &adapter->tx_ring[0]);
+	tx_clean_complete = e1000_clean_tx_irq(adapter, &adapter->tx_ring[0]);  // 处理网卡向外发送的数据
 
-	adapter->clean_rx(adapter, &adapter->rx_ring[0], &work_done, budget);
+	adapter->clean_rx(adapter, &adapter->rx_ring[0], &work_done, budget);   // 处理网卡中断收到的数据包，clean_rx在1866行被初始化为e1000_clean_rx_irq，rx_ring为设备的环形缓冲区指针
 
 	if (!tx_clean_complete || work_done == budget)
 		return budget;
@@ -3998,7 +3998,7 @@ static void e1000_consume_page(struct e1000_rx_buffer *bi, struct sk_buff *skb,
 static void e1000_receive_skb(struct e1000_adapter *adapter, u8 status,
 			      __le16 vlan, struct sk_buff *skb)
 {
-	skb->protocol = eth_type_trans(skb, adapter->netdev);
+	skb->protocol = eth_type_trans(skb, adapter->netdev);   // 获取skb的上层协议类型
 
 	if (status & E1000_RXD_STAT_VP) {
 		u16 vid = le16_to_cpu(vlan) & E1000_RXD_SPC_VLAN_MASK;
@@ -4361,11 +4361,11 @@ static bool e1000_clean_rx_irq(struct e1000_adapter *adapter,
 	bool cleaned = false;
 	unsigned int total_rx_bytes = 0, total_rx_packets = 0;
 
-	i = rx_ring->next_to_clean;
+	i = rx_ring->next_to_clean;             // 把i置为下一个要清除的描述符索引，因为在环形缓冲区队列当中，我们即使已经处理完一个缓冲区描述符，也不是将其删除，而是标记为已经处理，这样如果有新的数据需要使用缓冲区，只是将已经处理的缓冲区覆盖而已
 	rx_desc = E1000_RX_DESC(*rx_ring, i);
-	buffer_info = &rx_ring->buffer_info[i];
+	buffer_info = &rx_ring->buffer_info[i]; // 取出缓冲区中的数据
 
-	while (rx_desc->status & E1000_RXD_STAT_DD) {
+	while (rx_desc->status & E1000_RXD_STAT_DD) {   // 如果i对应的描述符状态是已经删除
 		struct sk_buff *skb;
 		u8 *data;
 		u8 status;
@@ -4380,7 +4380,7 @@ static bool e1000_clean_rx_irq(struct e1000_adapter *adapter,
 
 		data = buffer_info->rxbuf.data;
 		prefetch(data);
-		skb = e1000_copybreak(adapter, buffer_info, length, data);
+		skb = e1000_copybreak(adapter, buffer_info, length, data);  // 取出skb数据包
 		if (!skb) {
 			unsigned int frag_len = e1000_frag_len(adapter);
 
@@ -4461,7 +4461,7 @@ process_skb:
 				  ((u32)(rx_desc->errors) << 24),
 				  le16_to_cpu(rx_desc->csum), skb);
 
-		e1000_receive_skb(adapter, status, rx_desc->special, skb);
+		e1000_receive_skb(adapter, status, rx_desc->special, skb);  // 将skb向上层协议处理函数递交
 
 next_desc:
 		rx_desc->status = 0;
